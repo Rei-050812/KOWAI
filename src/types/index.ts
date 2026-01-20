@@ -1,4 +1,4 @@
-export type StoryStyle = 'short' | 'medium' | 'real' | 'urban';
+export type StoryStyle = 'short' | 'medium' | 'long';
 
 export interface Story {
   id: string;
@@ -21,15 +21,13 @@ export interface WordCount {
 }
 
 export const STYLE_LABELS: Record<StoryStyle, string> = {
-  short: '短編オチ型',
-  medium: '中編雰囲気型',
-  real: '実話怪談風',
-  urban: '都市伝説風',
+  short: '短編',
+  medium: '中編',
+  long: '長編',
 };
 
 export const STYLE_DESCRIPTIONS: Record<StoryStyle, string> = {
-  short: '約500文字。短くまとまった、ゾクッとするオチがある怪談',
-  medium: '約1000文字。じっくりと恐怖が積み重なる雰囲気重視の怪談',
-  real: '実際にあった話のような、リアルで生々しい怪談',
-  urban: '「〇〇を見たら死ぬ」のような、広まりやすい都市伝説',
+  short: '約500字。サクッと読める、オチ重視で最後の一文で急転する怪談',
+  medium: '約1000字。じっくり読ませる、雰囲気と恐怖が徐々に積み重なる怪談',
+  long: '約2000字。読み応えのある本格怪談、伏線や複数の展開を含む',
 };

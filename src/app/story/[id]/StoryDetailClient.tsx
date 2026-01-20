@@ -59,24 +59,25 @@ export default function StoryDetailClient({ story }: StoryDetailClientProps) {
   return (
     <div className="story-detail min-h-screen">
       {/* 怪談本文 */}
-      <div className="max-w-2xl mx-auto px-6 py-12 md:py-20">
+      <div className="max-w-3xl mx-auto px-8 py-16 md:py-24">
         {/* タイトル */}
-        <h1 className="text-2xl md:text-3xl font-bold text-center mb-12 text-horror-crimson">
+        <h1 className="text-3xl md:text-4xl font-bold text-center mb-8 text-horror-crimson tracking-wide leading-tight" style={{textShadow: '0 0 30px rgba(165, 42, 42, 0.4)'}}>
           {story.title}
         </h1>
+        <div className="w-20 h-px bg-horror-crimson/60 mx-auto mb-16"></div>
 
         {/* 本文（タイピング演出） */}
-        <div className="story-detail-text whitespace-pre-wrap mb-16">
+        <div className="story-detail-text whitespace-pre-wrap mb-20">
           {displayedText}
           {isTyping && <span className="typing-cursor" />}
         </div>
 
         {/* スキップボタン（タイピング中のみ表示） */}
         {isTyping && (
-          <div className="text-center mb-8">
+          <div className="text-center mb-12">
             <button
               onClick={skip}
-              className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
+              className="text-horror-text-secondary hover:text-horror-text text-sm transition-colors tracking-wider"
             >
               スキップ →
             </button>
@@ -87,27 +88,28 @@ export default function StoryDetailClient({ story }: StoryDetailClientProps) {
         {isComplete && (
           <div className="animate-fade-in-up">
             {/* 区切り線 */}
-            <div className="w-16 h-px bg-horror-crimson/50 mx-auto mb-12" />
+            <div className="w-24 h-px bg-horror-crimson/60 mx-auto mb-16" />
 
             {/* メタ情報 */}
-            <div className="text-center mb-12 text-gray-500 text-sm">
-              <span className="inline-block px-3 py-1 border border-horror-crimson/30 rounded">
+            <div className="text-center mb-16 text-horror-text-secondary text-sm">
+              <span className="inline-block px-5 py-2 border border-horror-crimson/40 rounded-sm tracking-wider">
                 {story.word}
               </span>
             </div>
 
             {/* アクションボタン */}
-            <div className="flex flex-col items-center gap-6">
+            <div className="flex flex-col items-center gap-8">
               {/* いいね・シェアボタン */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
                 <button
                   onClick={handleLike}
                   disabled={hasLiked || isLiking}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all duration-300 ${
+                  className={`flex items-center gap-3 px-8 py-4 rounded-md transition-all duration-400 tracking-wide ${
                     hasLiked
-                      ? "bg-horror-red/30 text-horror-crimson"
-                      : "bg-transparent border border-gray-700 text-gray-400 hover:border-horror-crimson hover:text-white"
+                      ? "bg-horror-red/20 text-horror-crimson border border-horror-crimson/60"
+                      : "bg-transparent border border-horror-blood/60 text-horror-text-secondary hover:border-horror-crimson hover:text-horror-text hover:bg-horror-crimson/5"
                   }`}
+                  style={{boxShadow: hasLiked ? '0 0 25px rgba(165, 42, 42, 0.3)' : '0 0 15px rgba(74, 0, 0, 0.2)'}}
                 >
                   <span>{hasLiked ? "❤️" : "🤍"}</span>
                   <span>{likes}</span>
@@ -115,7 +117,8 @@ export default function StoryDetailClient({ story }: StoryDetailClientProps) {
 
                 <button
                   onClick={handleShare}
-                  className="flex items-center gap-2 px-6 py-3 rounded-lg bg-transparent border border-gray-700 text-gray-400 hover:border-horror-crimson hover:text-white transition-all duration-300"
+                  className="flex items-center gap-3 px-8 py-4 rounded-md bg-transparent border border-horror-blood/60 text-horror-text-secondary hover:border-horror-crimson hover:text-horror-text transition-all duration-400 tracking-wide hover:bg-horror-crimson/5"
+                  style={{boxShadow: '0 0 15px rgba(74, 0, 0, 0.2)'}}
                 >
                   <span>𝕏</span>
                   <span>シェア</span>
@@ -125,14 +128,15 @@ export default function StoryDetailClient({ story }: StoryDetailClientProps) {
               {/* 別の怖い話を見るボタン */}
               <button
                 onClick={handleNavigateHome}
-                className="mt-8 px-8 py-4 bg-horror-crimson hover:bg-horror-red text-white font-bold rounded-lg transition-all duration-300 hover:shadow-lg hover:shadow-horror-crimson/30"
+                className="mt-10 px-10 py-5 bg-horror-red hover:bg-horror-crimson text-horror-text font-semibold rounded-md transition-all duration-400 tracking-wider"
+                style={{boxShadow: '0 0 30px rgba(139, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.5)'}}
               >
                 別の怖い話を見る
               </button>
             </div>
 
             {/* 閲覧数 */}
-            <div className="text-center mt-12 text-gray-600 text-xs">
+            <div className="text-center mt-16 text-horror-text-secondary text-xs tracking-wider opacity-70">
               👁 {story.views + 1} views
             </div>
           </div>

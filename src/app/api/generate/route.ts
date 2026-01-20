@@ -12,6 +12,7 @@ interface GeneratedStory {
   title: string;
   hook: string;
   story: string;
+  pattern?: string;
 }
 
 function parseStoryResponse(text: string): GeneratedStory {
@@ -36,6 +37,7 @@ function parseStoryResponse(text: string): GeneratedStory {
       title: parsed.title || "無題の怪談",
       hook: parsed.hook || "",
       story: parsed.story || "",
+      pattern: parsed.pattern || undefined,
     };
   } catch {
     // JSONパースに失敗した場合、テキスト全体をstoryとして使用
@@ -68,7 +70,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validStyles: StoryStyle[] = ["short", "medium", "real", "urban"];
+    const validStyles: StoryStyle[] = ["short", "medium", "long"];
     if (!validStyles.includes(style)) {
       return NextResponse.json(
         { error: "無効なスタイルです" },
