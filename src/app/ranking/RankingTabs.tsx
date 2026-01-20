@@ -97,6 +97,11 @@ function StoryList({
 
             {/* コンテンツ */}
             <div className="flex-1 min-w-0">
+              {/* タイトル */}
+              <h3 className="font-bold text-horror-crimson mb-2">
+                {story.title}
+              </h3>
+
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="bg-horror-red/30 text-horror-crimson px-2 py-1 rounded text-sm font-bold">
                   {story.word}
@@ -106,8 +111,8 @@ function StoryList({
                 </span>
               </div>
 
-              <p className="text-gray-300 text-sm line-clamp-2">
-                {story.content.slice(0, 100)}...
+              <p className="text-gray-400 text-sm line-clamp-2">
+                {story.hook}
               </p>
 
               <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
@@ -141,10 +146,7 @@ function WordList({ words }: { words: WordCount[] }) {
   return (
     <div className="space-y-3">
       {words.map((wordData, index) => (
-        <div
-          key={wordData.id}
-          className="horror-card flex items-center gap-4"
-        >
+        <div key={wordData.id} className="horror-card flex items-center gap-4">
           {/* ランキング番号 */}
           <div
             className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-black ${

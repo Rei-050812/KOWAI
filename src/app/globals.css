@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -10,6 +10,7 @@
   --color-horror-blood: #660000;
 
   --font-family-gothic: 'Noto Sans JP', sans-serif;
+  --font-family-serif: 'Noto Serif JP', serif;
 }
 
 :root {
@@ -150,4 +151,72 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* フェードインアニメーション */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* タイピングカーソル */
+@keyframes cursorBlink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
+  background-color: var(--color-horror-crimson);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursorBlink 1s infinite;
+}
+
+/* 怪談詳細ページ用スタイル */
+.story-detail {
+  font-family: 'Noto Serif JP', serif;
+  background-color: #000000;
+  color: #E5E5E5;
+  line-height: 2.2;
+  letter-spacing: 0.08em;
+}
+
+.story-detail-text {
+  font-size: 1.1rem;
+  line-height: 2.4;
+}
+
+@media (min-width: 768px) {
+  .story-detail-text {
+    font-size: 1.25rem;
+  }
+}
+
+/* ボタンのフェードイン */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
 }

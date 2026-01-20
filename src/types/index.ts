@@ -4,7 +4,9 @@ export interface Story {
   id: string;
   word: string;
   style: StoryStyle;
-  content: string;
+  title: string;
+  hook: string;
+  story: string;
   likes: number;
   views: number;
   created_at: string;

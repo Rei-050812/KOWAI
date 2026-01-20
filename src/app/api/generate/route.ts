@@ -8,6 +8,46 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+interface GeneratedStory {
+  title: string;
+  hook: string;
+  story: string;
+}
+
+function parseStoryResponse(text: string): GeneratedStory {
+  // JSONを抽出（```json ... ``` や 余分なテキストを除去）
+  let jsonStr = text;
+
+  // コードブロックを除去
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1];
+  }
+
+  // JSONオブジェクトを抽出
+  const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    jsonStr = jsonMatch[0];
+  }
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return {
+      title: parsed.title || "無題の怪談",
+      hook: parsed.hook || "",
+      story: parsed.story || "",
+    };
+  } catch {
+    // JSONパースに失敗した場合、テキスト全体をstoryとして使用
+    console.error("Failed to parse JSON, using raw text");
+    return {
+      title: "無題の怪談",
+      hook: text.slice(0, 100),
+      story: text,
+    };
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -56,10 +96,17 @@ export async function POST(request: NextRequest) {
       throw new Error("Unexpected response type");
     }
 
-    const storyContent = content.text;
+    // JSONをパース
+    const generatedStory = parseStoryResponse(content.text);
 
     // データベースに保存
-    const story = await createStory(word, style, storyContent);
+    const story = await createStory(
+      word,
+      style,
+      generatedStory.title,
+      generatedStory.hook,
+      generatedStory.story
+    );
 
     // 単語カウントを更新
     await incrementWordCount(word);

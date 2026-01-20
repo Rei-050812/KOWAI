@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Story, WordCount, STYLE_LABELS } from "@/types";
+import { Story, WordCount } from "@/types";
 
 interface RankingData {
   latest: Story[];
@@ -63,12 +63,12 @@ export default function RankingPreview() {
                 href={`/story/${story.id}`}
                 className="block p-3 bg-horror-dark/50 rounded hover:bg-horror-red/10 transition-colors"
               >
-                <span className="text-horror-crimson font-bold text-sm">
+                <p className="font-bold text-white text-sm mb-1">
+                  {story.title}
+                </p>
+                <span className="text-horror-crimson text-xs">
                   {story.word}
                 </span>
-                <p className="text-gray-400 text-xs mt-1 line-clamp-1">
-                  {story.content.slice(0, 40)}...
-                </p>
               </a>
             ))}
           </div>
@@ -90,15 +90,13 @@ export default function RankingPreview() {
                 href={`/story/${story.id}`}
                 className="block p-3 bg-horror-dark/50 rounded hover:bg-horror-red/10 transition-colors"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-horror-crimson font-bold text-sm">
-                    {story.word}
-                  </span>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="font-bold text-white text-sm">{story.title}</p>
                   <span className="text-gray-500 text-xs">❤️ {story.likes}</span>
                 </div>
-                <p className="text-gray-400 text-xs mt-1 line-clamp-1">
-                  {story.content.slice(0, 40)}...
-                </p>
+                <span className="text-horror-crimson text-xs">
+                  {story.word}
+                </span>
               </a>
             ))}
           </div>

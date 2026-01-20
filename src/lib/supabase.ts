@@ -21,7 +21,9 @@ function getSupabaseClient(): SupabaseClient {
 export async function createStory(
   word: string,
   style: StoryStyle,
-  content: string
+  title: string,
+  hook: string,
+  story: string
 ): Promise<Story> {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -29,7 +31,9 @@ export async function createStory(
     .insert({
       word,
       style,
-      content,
+      title,
+      hook,
+      story,
       likes: 0,
       views: 0,
     })
@@ -67,7 +71,28 @@ export async function getStoryById(id: string): Promise<Story | null> {
 // 閲覧数をインクリメント
 export async function incrementViews(id: string): Promise<void> {
   const client = getSupabaseClient();
-  const { error } = await client.rpc("increment_views", { story_id: id });
+  const { error } = await client
+    .from("stories")
+    .update({ views: client.rpc ? undefined : 1 })
+    .eq("id", id);
+
+  // より良い方法：直接SQLで増加
+  await client.rpc("increment_views", { story_id: id }).catch(() => {
+    // RPC関数がない場合は通常のupdateを使用
+    client
+      .from("stories")
+      .select("views")
+      .eq("id", id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          client
+            .from("stories")
+            .update({ views: (data.views || 0) + 1 })
+            .eq("id", id);
+        }
+      });
+  });
 
   if (error) {
     console.error("Error incrementing views:", error);
@@ -77,14 +102,27 @@ export async function incrementViews(id: string): Promise<void> {
 // いいねをインクリメント
 export async function incrementLikes(id: string): Promise<number> {
   const client = getSupabaseClient();
-  const { data, error } = await client.rpc("increment_likes", { story_id: id });
+
+  // まず現在の値を取得
+  const { data: currentData } = await client
+    .from("stories")
+    .select("likes")
+    .eq("id", id)
+    .single();
+
+  const newLikes = (currentData?.likes || 0) + 1;
+
+  const { error } = await client
+    .from("stories")
+    .update({ likes: newLikes })
+    .eq("id", id);
 
   if (error) {
     console.error("Error incrementing likes:", error);
     throw new Error("いいねに失敗しました");
   }
 
-  return data;
+  return newLikes;
 }
 
 // 最新の怪談を取得
@@ -125,12 +163,25 @@ export async function getPopularStories(limit: number = 10): Promise<Story[]> {
 // 単語カウントをインクリメント
 export async function incrementWordCount(word: string): Promise<void> {
   const client = getSupabaseClient();
-  const { error } = await client.rpc("increment_word_count", {
-    input_word: word,
-  });
 
-  if (error) {
-    console.error("Error incrementing word count:", error);
+  // まず単語が存在するか確認
+  const { data: existingWord } = await client
+    .from("words")
+    .select("*")
+    .eq("word", word)
+    .single();
+
+  if (existingWord) {
+    // 存在する場合はカウントを増加
+    await client
+      .from("words")
+      .update({ count: existingWord.count + 1 })
+      .eq("word", word);
+  } else {
+    // 存在しない場合は新規作成
+    await client
+      .from("words")
+      .insert({ word, count: 1 });
   }
 }
 
