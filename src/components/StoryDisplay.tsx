@@ -36,7 +36,10 @@ export default function StoryDisplay({
     }
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
+    // シェアカウントを増加（非同期で実行、エラーは無視）
+    fetch(`/api/stories/${story.id}/share`, { method: "POST" }).catch(() => {});
+
     const text = `「${story.word}」から生まれた怪談「${story.title}」を読んでみて...\n\n${story.hook}`;
     const url = `${window.location.origin}/story/${story.id}`;
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;

@@ -4,15 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Story } from "@/types";
 import { useTypingEffect } from "@/hooks/useTypingEffect";
+import ShareButtons from "@/components/ShareButtons";
 
 interface StoryDetailClientProps {
   story: Story;
+  shareCount?: number;
 }
 
 // タイピング速度（ミリ秒/文字）
 const TYPING_SPEED = 40;
 
-export default function StoryDetailClient({ story }: StoryDetailClientProps) {
+export default function StoryDetailClient({ story, shareCount = 0 }: StoryDetailClientProps) {
   const router = useRouter();
   const [likes, setLikes] = useState(story.likes);
   const [hasLiked, setHasLiked] = useState(false);
@@ -43,13 +45,6 @@ export default function StoryDetailClient({ story }: StoryDetailClientProps) {
     } finally {
       setIsLiking(false);
     }
-  };
-
-  const handleShare = () => {
-    const text = `「${story.word}」から生まれた怪談「${story.title}」\n\n${story.hook}\n\n#KOWAI #AI怪談`;
-    const url = `${window.location.origin}/story/${story.id}`;
-    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-    window.open(twitterUrl, "_blank", "width=550,height=420");
   };
 
   const handleNavigateHome = () => {
@@ -99,36 +94,34 @@ export default function StoryDetailClient({ story }: StoryDetailClientProps) {
 
             {/* アクションボタン */}
             <div className="flex flex-col items-center gap-8">
-              {/* いいね・シェアボタン */}
-              <div className="flex items-center gap-6">
-                <button
-                  onClick={handleLike}
-                  disabled={hasLiked || isLiking}
-                  className={`flex items-center gap-3 px-8 py-4 rounded-md transition-all duration-400 tracking-wide ${
-                    hasLiked
-                      ? "bg-horror-red/20 text-horror-crimson border border-horror-crimson/60"
-                      : "bg-transparent border border-horror-blood/60 text-horror-text-secondary hover:border-horror-crimson hover:text-horror-text hover:bg-horror-crimson/5"
-                  }`}
-                  style={{boxShadow: hasLiked ? '0 0 25px rgba(165, 42, 42, 0.3)' : '0 0 15px rgba(74, 0, 0, 0.2)'}}
-                >
-                  <span>{hasLiked ? "❤️" : "🤍"}</span>
-                  <span>{likes}</span>
-                </button>
+              {/* いいねボタン */}
+              <button
+                onClick={handleLike}
+                disabled={hasLiked || isLiking}
+                className={`flex items-center gap-3 px-8 py-4 rounded-md transition-all duration-400 tracking-wide ${
+                  hasLiked
+                    ? "bg-horror-red/20 text-horror-crimson border border-horror-crimson/60"
+                    : "bg-transparent border border-horror-blood/60 text-horror-text-secondary hover:border-horror-crimson hover:text-horror-text hover:bg-horror-crimson/5"
+                }`}
+                style={{boxShadow: hasLiked ? '0 0 25px rgba(165, 42, 42, 0.3)' : '0 0 15px rgba(74, 0, 0, 0.2)'}}
+              >
+                <span>{hasLiked ? "❤️" : "🤍"}</span>
+                <span>{likes}</span>
+              </button>
 
-                <button
-                  onClick={handleShare}
-                  className="flex items-center gap-3 px-8 py-4 rounded-md bg-transparent border border-horror-blood/60 text-horror-text-secondary hover:border-horror-crimson hover:text-horror-text transition-all duration-400 tracking-wide hover:bg-horror-crimson/5"
-                  style={{boxShadow: '0 0 15px rgba(74, 0, 0, 0.2)'}}
-                >
-                  <span>𝕏</span>
-                  <span>シェア</span>
-                </button>
-              </div>
+              {/* シェアボタン群 */}
+              <ShareButtons
+                storyId={story.id}
+                word={story.word}
+                title={story.title}
+                hook={story.hook}
+                initialShareCount={shareCount}
+              />
 
               {/* 別の怖い話を見るボタン */}
               <button
                 onClick={handleNavigateHome}
-                className="mt-10 px-10 py-5 bg-horror-red hover:bg-horror-crimson text-horror-text font-semibold rounded-md transition-all duration-400 tracking-wider"
+                className="mt-6 px-10 py-5 bg-horror-red hover:bg-horror-crimson text-horror-text font-semibold rounded-md transition-all duration-400 tracking-wider"
                 style={{boxShadow: '0 0 30px rgba(139, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.5)'}}
               >
                 別の怖い話を見る

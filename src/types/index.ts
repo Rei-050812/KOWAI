@@ -31,3 +31,25 @@ export const STYLE_DESCRIPTIONS: Record<StoryStyle, string> = {
   medium: '約1000字。じっくり読ませる、雰囲気と恐怖が徐々に積み重なる怪談',
   long: '約2000字。読み応えのある本格怪談、伏線や複数の展開を含む',
 };
+
+// ランキング機能用の型定義
+export interface StoryWithScore extends Story {
+  share_count: number;
+  score: number;
+}
+
+export interface TrendWord {
+  word: string;
+  current_count: number;
+  previous_count: number;
+  growth_rate: number;
+}
+
+export interface WordUsageLog {
+  id: string;
+  word: string;
+  story_id: string;
+  created_at: string;
+}
+
+export type RankingType = 'hall_of_fame' | 'weekly' | 'monthly' | 'trending' | 'hidden_gems';

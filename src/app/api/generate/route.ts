@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { StoryStyle } from "@/types";
 import { generatePrompt } from "@/lib/prompts";
-import { createStory, incrementWordCount } from "@/lib/supabase";
+import { createStory, incrementWordCount, logWordUsage } from "@/lib/supabase";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -112,6 +112,9 @@ export async function POST(request: NextRequest) {
 
     // 単語カウントを更新
     await incrementWordCount(word);
+
+    // トレンド計算用に単語使用ログを記録
+    await logWordUsage(word, story.id);
 
     return NextResponse.json({ story });
   } catch (error) {

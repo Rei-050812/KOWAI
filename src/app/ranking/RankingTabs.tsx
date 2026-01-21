@@ -1,20 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Story, WordCount, STYLE_LABELS } from "@/types";
+import { Story, TrendWord, WordCount, STYLE_LABELS } from "@/types";
+import TrendWordBadge from "@/components/TrendWordBadge";
 
 interface RankingTabsProps {
   latestStories: Story[];
   popularStories: Story[];
   popularWords: WordCount[];
+  trendWords: TrendWord[];
 }
 
-type TabType = "latest" | "popular" | "words";
+type TabType = "latest" | "popular" | "words" | "trending";
 
 export default function RankingTabs({
   latestStories,
   popularStories,
   popularWords,
+  trendWords,
 }: RankingTabsProps) {
   const [activeTab, setActiveTab] = useState<TabType>("latest");
 
@@ -22,6 +25,7 @@ export default function RankingTabs({
     { id: "latest", label: "最新の怪談", icon: "🕐" },
     { id: "popular", label: "人気の怪談", icon: "🔥" },
     { id: "words", label: "人気の単語", icon: "💀" },
+    { id: "trending", label: "トレンド", icon: "📈" },
   ];
 
   return (
@@ -53,6 +57,7 @@ export default function RankingTabs({
           <StoryList stories={popularStories} showLikes />
         )}
         {activeTab === "words" && <WordList words={popularWords} />}
+        {activeTab === "trending" && <TrendList trendWords={trendWords} />}
       </div>
     </div>
   );
@@ -177,6 +182,31 @@ function WordList({ words }: { words: WordCount[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function TrendList({ trendWords }: { trendWords: TrendWord[] }) {
+  if (trendWords.length === 0) {
+    return (
+      <div className="text-center text-gray-500 py-12">
+        <p className="text-4xl mb-4">📈</p>
+        <p>まだトレンドデータがありません</p>
+        <p className="text-sm mt-2">怪談が生成されるとトレンドが表示されます</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-gray-400 text-sm mb-4 text-center">
+        過去24時間で使用が増えた単語（前日比）
+      </p>
+      <div className="flex flex-wrap justify-center gap-3">
+        {trendWords.map((trendWord) => (
+          <TrendWordBadge key={trendWord.word} trendWord={trendWord} />
+        ))}
+      </div>
     </div>
   );
 }

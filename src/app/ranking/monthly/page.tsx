@@ -1,0 +1,64 @@
+import { Metadata } from "next";
+import { getMonthlyRankingStories } from "@/lib/supabase";
+import { StoryWithScore } from "@/types";
+import RankingNavigation from "@/components/RankingNavigation";
+import RankingCard from "@/components/RankingCard";
+
+export const metadata: Metadata = {
+  title: "月間ランキング",
+  description: "今月最も読まれた怪談TOP30。月間の人気怪談をまとめてチェック。",
+};
+
+export const dynamic = "force-dynamic";
+
+export default async function MonthlyRankingPage() {
+  let stories: StoryWithScore[] = [];
+
+  try {
+    stories = await getMonthlyRankingStories(30);
+  } catch (error) {
+    console.error("Failed to fetch monthly ranking:", error);
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8 md:py-12">
+      <div className="max-w-4xl mx-auto">
+        <RankingNavigation current="monthly" />
+
+        <div className="text-center mb-8">
+          <h1 className="text-3xl md:text-4xl font-black text-white mb-4">
+            <span className="text-horror-crimson">月間</span>ランキング
+          </h1>
+          <p className="text-gray-400">過去30日間で人気を集めた怪談</p>
+        </div>
+
+        {stories.length === 0 ? (
+          <div className="text-center text-gray-500 py-12">
+            <p className="text-6xl mb-4">📆</p>
+            <p>今月の怪談はまだありません</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {stories.map((story, index) => (
+              <RankingCard
+                key={story.id}
+                story={story}
+                rank={index + 1}
+                showScore
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="mt-12 text-center">
+          <a
+            href="/ranking"
+            className="text-horror-crimson hover:text-white transition-colors"
+          >
+            ← ランキングトップに戻る
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
