@@ -1,5 +1,13 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Story, StoryStyle, StoryWithScore, TrendWord, WordCount } from "@/types";
+import {
+  Story,
+  StoryStyle,
+  StoryWithScore,
+  TrendWord,
+  WordCount,
+  KaidanBlueprintData,
+  BlueprintSearchResult,
+} from "@/types";
 
 let supabase: SupabaseClient | null = null;
 
@@ -469,4 +477,117 @@ export async function getRandomStories(limit: number = 5): Promise<StoryWithScor
     share_count: story.share_count || 0,
     score: story.score || 0,
   })) as StoryWithScore[];
+}
+
+// =============================================
+// RAG Blueprint 関連（タグベース検索版）
+// =============================================
+
+/**
+ * Blueprintを保存
+ */
+export async function saveBlueprint(
+  title: string,
+  tags: string[],
+  blueprint: KaidanBlueprintData,
+  qualityScore: number = 0
+): Promise<{ id: number }> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client
+    .from("kaidan_blueprints")
+    .insert({
+      title,
+      tags,
+      blueprint,
+      quality_score: qualityScore,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Error saving blueprint:", error);
+    throw new Error("Blueprintの保存に失敗しました");
+  }
+
+  return { id: data.id };
+}
+
+/**
+ * キーワードでBlueprintを検索（タグベース）
+ */
+export async function matchBlueprintsByKeyword(
+  keyword: string,
+  matchCount: number = 3,
+  minQuality: number = 0
+): Promise<BlueprintSearchResult[]> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client.rpc("match_blueprints_by_keyword", {
+    search_keyword: keyword,
+    match_count: matchCount,
+    min_quality: minQuality,
+  });
+
+  if (error) {
+    console.error("Error matching blueprints:", error);
+    throw new Error("Blueprintの検索に失敗しました");
+  }
+
+  // match_scoreをsimilarityに変換（互換性のため）
+  return (data || []).map((item: { id: number; title: string; blueprint: KaidanBlueprintData; tags: string[]; quality_score: number; match_score: number }) => ({
+    ...item,
+    similarity: item.match_score / 15, // 正規化（max=15程度）
+  })) as BlueprintSearchResult[];
+}
+
+/**
+ * ランダムにBlueprintを取得（フォールバック用）
+ */
+export async function getRandomBlueprint(
+  minQuality: number = 30
+): Promise<BlueprintSearchResult | null> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client.rpc("get_random_blueprint", {
+    min_quality: minQuality,
+  });
+
+  if (error) {
+    console.error("Error getting random blueprint:", error);
+    return null;
+  }
+
+  if (!data || data.length === 0) return null;
+
+  return {
+    ...data[0],
+    similarity: 0.5, // ランダム取得なので中間値
+  } as BlueprintSearchResult;
+}
+
+/**
+ * 全Blueprintを取得（管理用）
+ */
+export async function getAllBlueprints(limit: number = 100): Promise<{
+  id: number;
+  title: string;
+  tags: string[];
+  quality_score: number;
+  created_at: string;
+}[]> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client
+    .from("kaidan_blueprints")
+    .select("id, title, tags, quality_score, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("Error fetching blueprints:", error);
+    throw new Error("Blueprintの取得に失敗しました");
+  }
+
+  return data || [];
 }

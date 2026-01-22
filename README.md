@@ -15,9 +15,21 @@
 
 ## 📖 概要
 
-KOWAIは、Claude AIを活用した次世代の怪談生成プラットフォームです。ユーザーが入力した一つの単語から、構造化されたプロンプトに基づいて本格的な怪談を自動生成します。
+KOWAIは、Claude AIを活用した次世代の怪談生成プラットフォームです。ユーザーが入力した一つの単語から、**Blueprint駆動RAGシステム**と「洒落怖」スタイルのプロンプトに基づいて本格的な怪談を自動生成します。
 
 ### ✨ 特徴
+
+- 🧠 **Blueprint駆動RAGシステム**（NEW!）
+  - 怪談の構造パターンを「Blueprint」として蓄積
+  - タグベース検索による高速マッチング
+  - 品質スコアによる階層的検索（70点→50点→30点→ランダム）
+  - 管理画面から新しいBlueprintを登録可能
+
+- 👻 **「洒落怖」スタイル**
+  - 2ちゃんねるオカルト板発祥のリアリティ重視の怪談
+  - 「不可逆の確定」：取り返しがつかないと悟った瞬間を描写
+  - 怪異は1種類のみ、説明は一切しない
+  - 日常ディテールの積み重ねで信憑性を担保
 
 - 🎭 **4つの怪談パターン**
   - 目撃系：不可解なものを目撃する視覚的恐怖
@@ -135,6 +147,103 @@ CREATE TABLE word_counts (
 CREATE INDEX idx_stories_created_at ON stories(created_at DESC);
 CREATE INDEX idx_stories_likes ON stories(likes DESC);
 CREATE INDEX idx_word_counts_count ON word_counts(count DESC);
+
+-- word_usage_logs テーブル（トレンド計算用）
+CREATE TABLE word_usage_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  word TEXT NOT NULL,
+  story_id UUID REFERENCES stories(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_word_usage_logs_word ON word_usage_logs(word);
+CREATE INDEX idx_word_usage_logs_created_at ON word_usage_logs(created_at DESC);
+```
+
+#### Blueprint RAGシステム用テーブル
+
+```sql
+-- kaidan_blueprints テーブルの作成
+CREATE TABLE kaidan_blueprints (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  blueprint JSONB NOT NULL,
+  quality_score INTEGER NOT NULL DEFAULT 50 CHECK (quality_score >= 0 AND quality_score <= 100),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- インデックスの作成
+CREATE INDEX idx_blueprints_tags ON kaidan_blueprints USING GIN (tags);
+CREATE INDEX idx_blueprints_quality ON kaidan_blueprints(quality_score DESC);
+CREATE INDEX idx_blueprints_created_at ON kaidan_blueprints(created_at DESC);
+
+-- タグベース検索RPC
+CREATE OR REPLACE FUNCTION match_blueprints_by_keyword(
+  query_keyword TEXT,
+  match_count INT DEFAULT 3,
+  min_quality INT DEFAULT 50
+)
+RETURNS TABLE (
+  id INT,
+  title TEXT,
+  blueprint JSONB,
+  tags TEXT[],
+  quality_score INT,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    kb.id,
+    kb.title,
+    kb.blueprint,
+    kb.tags,
+    kb.quality_score,
+    1.0::FLOAT AS similarity
+  FROM kaidan_blueprints kb
+  WHERE
+    kb.quality_score >= min_quality
+    AND EXISTS (
+      SELECT 1 FROM unnest(kb.tags) AS tag
+      WHERE tag ILIKE '%' || query_keyword || '%'
+         OR query_keyword ILIKE '%' || tag || '%'
+    )
+  ORDER BY kb.quality_score DESC
+  LIMIT match_count;
+END;
+$$;
+
+-- ランダムBlueprint取得RPC
+CREATE OR REPLACE FUNCTION get_random_blueprint(min_quality INT DEFAULT 50)
+RETURNS TABLE (
+  id INT,
+  title TEXT,
+  blueprint JSONB,
+  tags TEXT[],
+  quality_score INT,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    kb.id,
+    kb.title,
+    kb.blueprint,
+    kb.tags,
+    kb.quality_score,
+    0.0::FLOAT AS similarity
+  FROM kaidan_blueprints kb
+  WHERE kb.quality_score >= min_quality
+  ORDER BY RANDOM()
+  LIMIT 1;
+END;
+$$;
 ```
 
 ### 5. 開発サーバーの起動
@@ -170,9 +279,14 @@ KOWAI/
 ├── src/
 │   ├── app/                    # Next.js App Router
 │   │   ├── api/               # API Routes
-│   │   │   ├── generate/     # 怪談生成API
+│   │   │   ├── generate/     # 怪談生成API（Blueprint対応）
+│   │   │   ├── blueprints/   # Blueprint API
+│   │   │   │   ├── save/    # Blueprint保存
+│   │   │   │   └── search/  # Blueprint検索
 │   │   │   ├── ranking/      # ランキングAPI
 │   │   │   └── stories/      # ストーリーAPI
+│   │   ├── admin/            # 管理画面
+│   │   │   └── blueprints/  # Blueprint管理ページ
 │   │   ├── story/[id]/       # 怪談詳細ページ
 │   │   ├── ranking/          # ランキングページ
 │   │   ├── layout.tsx        # ルートレイアウト
@@ -183,12 +297,15 @@ KOWAI/
 │   │   ├── StoryDisplay.tsx    # 怪談表示
 │   │   └── RankingPreview.tsx  # ランキングプレビュー
 │   ├── lib/                   # ユーティリティ
-│   │   ├── prompts.ts        # AIプロンプト定義
-│   │   └── supabase.ts       # Supabaseクライアント
+│   │   ├── prompts.ts        # AIプロンプト定義（洒落怖スタイル）
+│   │   └── supabase.ts       # Supabaseクライアント（Blueprint対応）
 │   ├── hooks/                 # カスタムフック
 │   │   └── useTypingEffect.ts # タイピング演出
-│   └── types/                 # TypeScript型定義
+│   └── types/                 # TypeScript型定義（Blueprint型含む）
 │       └── index.ts
+├── supabase/
+│   └── migrations/           # DBマイグレーション
+│       └── 001_kaidan_blueprints.sql
 ├── public/                    # 静的ファイル
 ├── .env.local.example        # 環境変数のサンプル
 ├── next.config.ts            # Next.js設定
@@ -196,6 +313,61 @@ KOWAI/
 ├── tsconfig.json             # TypeScript設定
 └── package.json
 ```
+
+## 🧠 Blueprint RAGシステム
+
+### 概要
+
+Blueprintは怪談の「構造的な怖さの設計図」です。入力された単語に応じて適切なBlueprintを検索し、それを元に怪談を生成します。
+
+### Blueprintの構造
+
+```json
+{
+  "anomaly": "怪異の核（1つだけ）",
+  "normal_rule": "通常時の前提・日常のルール",
+  "irreversible_point": "不可逆の確定点",
+  "reader_understands": "読者が理解できること",
+  "reader_cannot_understand": "読者が理解できないこと",
+  "constraints": {
+    "no_explanations": true,
+    "single_anomaly_only": true,
+    "no_emotion_words": true,
+    "no_clean_resolution": true,
+    "daily_details_min": 3
+  },
+  "allowed_subgenres": ["目撃系", "伝承系"],
+  "detail_bank": ["日常ディテールのリスト"],
+  "ending_style": "結末のスタイル"
+}
+```
+
+### 品質評価システム（100点満点）
+
+| 評価項目 | 配点 | 説明 |
+|---------|------|------|
+| Single Anomaly（怪異1種のみ） | 0-30 | 怪異が1種類に絞られているか |
+| Normal Rule Clarity | 0-20 | 通常時の前提が明確か |
+| Irreversible Point | 0-25 | 不可逆の確定点が明確か |
+| No Explanations | 0-15 | 説明に逃げていないか |
+| Reusability | 0-10 | 別シチュエーションに転用可能か |
+
+### 検索アルゴリズム
+
+1. 入力単語でタグマッチ（min_quality: 70）
+2. マッチなし → min_quality: 50で再検索
+3. マッチなし → min_quality: 30で再検索
+4. マッチなし → ランダムにBlueprint取得
+5. Blueprintが0件 → 従来のプロンプトにフォールバック
+
+### 管理画面
+
+`/admin/blueprints` から新しいBlueprintを登録できます。
+
+- フォームで各フィールドを入力
+- 品質スコアを5項目で採点
+- 自動採点・自動タグ生成機能
+- 保存時にバリデーション実行
 
 ## 🎨 デザインシステム
 

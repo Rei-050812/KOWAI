@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { StoryStyle } from "@/types";
-import { generatePrompt } from "@/lib/prompts";
-import { createStory, incrementWordCount, logWordUsage } from "@/lib/supabase";
+import { StoryStyle, BlueprintSearchResult } from "@/types";
+import { generatePrompt, generateBlueprintPrompt } from "@/lib/prompts";
+import { createStory, incrementWordCount, logWordUsage, matchBlueprintsByKeyword, getRandomBlueprint } from "@/lib/supabase";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -78,9 +78,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Claude APIで怪談を生成
-    const prompt = generatePrompt(word, style);
+    // Blueprint検索を試行（タグベースRAG + min_quality階層検索）
+    let blueprint: BlueprintSearchResult | null = null;
+    let prompt: string;
 
+    // min_quality階層: 70 → 50 → 30 → ランダム → フォールバック
+    const MIN_QUALITY_LEVELS = [70, 50, 30];
+
+    try {
+      // 階層的にmin_qualityを下げながら検索
+      for (const minQuality of MIN_QUALITY_LEVELS) {
+        const blueprintResults = await matchBlueprintsByKeyword(word, 1, minQuality);
+        if (blueprintResults.length > 0) {
+          blueprint = blueprintResults[0];
+          console.log(`Blueprint found: ${blueprint.title} (quality: ${blueprint.quality_score}, min_quality: ${minQuality})`);
+          break;
+        }
+      }
+
+      if (blueprint) {
+        // Blueprint駆動のプロンプトを使用
+        prompt = generateBlueprintPrompt(word, style, blueprint.blueprint);
+      } else {
+        // タグマッチなし → ランダムに高品質Blueprintを取得
+        const randomBlueprint = await getRandomBlueprint(50);
+        if (randomBlueprint) {
+          blueprint = randomBlueprint;
+          prompt = generateBlueprintPrompt(word, style, blueprint.blueprint);
+          console.log(`Using random blueprint: ${blueprint.title} (quality: ${blueprint.quality_score})`);
+        } else {
+          // Blueprintが0件の場合は従来プロンプト
+          prompt = generatePrompt(word, style);
+          console.log("No blueprints available, using fallback prompt");
+        }
+      }
+    } catch (blueprintError) {
+      // Blueprint検索に失敗した場合はフォールバック
+      console.error("Blueprint search failed, using fallback:", blueprintError);
+      prompt = generatePrompt(word, style);
+    }
+
+    // Claude APIで怪談を生成
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2000,
