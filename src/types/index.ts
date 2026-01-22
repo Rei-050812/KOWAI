@@ -9,6 +9,7 @@ export interface Story {
   story: string;
   likes: number;
   views: number;
+  blueprint_id: number | null;  // 生成に使用したBlueprintのID（追跡用）
   created_at: string;
   updated_at: string;
 }

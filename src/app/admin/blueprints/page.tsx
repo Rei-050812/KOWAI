@@ -1,7 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { KaidanBlueprintData, QualityScoreBreakdown, ValidationWarning } from "@/types";
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { KaidanBlueprintData, ValidationWarning } from "@/types";
+import { scoreBlueprint, deductionsToWarnings } from "@/lib/blueprint-scoring";
+
+// sessionStorageキー（ingestページと共有）
+const BLUEPRINT_STORAGE_KEY = "kowai_temp_blueprint";
+const TAGS_STORAGE_KEY = "kowai_temp_tags";
 
 // デフォルトのBlueprint構造
 const DEFAULT_BLUEPRINT: KaidanBlueprintData = {
@@ -22,121 +28,6 @@ const DEFAULT_BLUEPRINT: KaidanBlueprintData = {
   ending_style: "前提が壊れた状態で停止（結末は描かない）",
 };
 
-// デフォルトの採点内訳
-const DEFAULT_BREAKDOWN: QualityScoreBreakdown = {
-  single_anomaly: 30,
-  normal_rule_clarity: 20,
-  irreversible_point_clarity: 25,
-  no_explanations: 15,
-  reusability: 10,
-};
-
-// 自動採点（機械チェック）
-function autoValidate(blueprint: KaidanBlueprintData): ValidationWarning[] {
-  const warnings: ValidationWarning[] = [];
-
-  // anomalyが空または短すぎる
-  if (!blueprint.anomaly || blueprint.anomaly.trim().length < 5) {
-    warnings.push({
-      field: "anomaly",
-      message: "怪異の核が未設定または短すぎます",
-      severity: "error",
-      deduction: 30,
-    });
-  }
-
-  // normal_ruleが空または短すぎる
-  if (!blueprint.normal_rule || blueprint.normal_rule.trim().length < 5) {
-    warnings.push({
-      field: "normal_rule",
-      message: "通常時の前提が未設定または短すぎます",
-      severity: "error",
-      deduction: 20,
-    });
-  }
-
-  // irreversible_pointが空または短すぎる
-  if (!blueprint.irreversible_point || blueprint.irreversible_point.trim().length < 5) {
-    warnings.push({
-      field: "irreversible_point",
-      message: "不可逆の確定点が未設定または短すぎます",
-      severity: "error",
-      deduction: 25,
-    });
-  }
-
-  // single_anomaly_onlyがfalse
-  if (!blueprint.constraints?.single_anomaly_only) {
-    warnings.push({
-      field: "constraints.single_anomaly_only",
-      message: "single_anomaly_onlyがfalseです（必須：true）",
-      severity: "error",
-      deduction: 30,
-    });
-  }
-
-  // no_explanationsがfalse
-  if (!blueprint.constraints?.no_explanations) {
-    warnings.push({
-      field: "constraints.no_explanations",
-      message: "no_explanationsがfalseです（推奨：true）",
-      severity: "warning",
-      deduction: 10,
-    });
-  }
-
-  // reader_understandsが空
-  if (!blueprint.reader_understands || blueprint.reader_understands.trim().length < 3) {
-    warnings.push({
-      field: "reader_understands",
-      message: "読者が理解できることが未設定です",
-      severity: "warning",
-      deduction: 5,
-    });
-  }
-
-  // reader_cannot_understandが空
-  if (!blueprint.reader_cannot_understand || blueprint.reader_cannot_understand.trim().length < 3) {
-    warnings.push({
-      field: "reader_cannot_understand",
-      message: "読者が理解できないことが未設定です",
-      severity: "warning",
-      deduction: 5,
-    });
-  }
-
-  // ending_styleが空
-  if (!blueprint.ending_style || blueprint.ending_style.trim().length < 3) {
-    warnings.push({
-      field: "ending_style",
-      message: "結末スタイルが未設定です",
-      severity: "warning",
-      deduction: 5,
-    });
-  }
-
-  // detail_bankが少ない
-  if (!blueprint.detail_bank || blueprint.detail_bank.length < 3) {
-    warnings.push({
-      field: "detail_bank",
-      message: "日常ディテールバンクが3つ未満です",
-      severity: "warning",
-      deduction: 3,
-    });
-  }
-
-  // allowed_subgenresが空
-  if (!blueprint.allowed_subgenres || blueprint.allowed_subgenres.length === 0) {
-    warnings.push({
-      field: "allowed_subgenres",
-      message: "許可サブジャンルが未設定です",
-      severity: "warning",
-      deduction: 2,
-    });
-  }
-
-  return warnings;
-}
 
 // タグを自動生成
 function generateTags(blueprint: KaidanBlueprintData): string[] {
@@ -169,64 +60,103 @@ export default function AdminBlueprintsPage() {
     JSON.stringify(DEFAULT_BLUEPRINT, null, 2)
   );
 
-  // 採点内訳
-  const [breakdown, setBreakdown] = useState<QualityScoreBreakdown>(DEFAULT_BREAKDOWN);
+  // 品質スコア（自動採点で更新される）
   const [qualityScore, setQualityScore] = useState(100);
 
   // 自動採点結果
   const [warnings, setWarnings] = useState<ValidationWarning[]>([]);
+
+  // 一時Blueprintの有無
+  const [hasTempBlueprint, setHasTempBlueprint] = useState(false);
 
   const [status, setStatus] = useState<{
     type: "idle" | "loading" | "success" | "error";
     message: string;
   }>({ type: "idle", message: "" });
 
-  // 内訳が変わったら合計を再計算
+  // 一時Blueprintの確認（マウント時）
   useEffect(() => {
-    const total =
-      breakdown.single_anomaly +
-      breakdown.normal_rule_clarity +
-      breakdown.irreversible_point_clarity +
-      breakdown.no_explanations +
-      breakdown.reusability;
-    setQualityScore(Math.min(100, Math.max(0, total)));
-  }, [breakdown]);
+    try {
+      const stored = sessionStorage.getItem(BLUEPRINT_STORAGE_KEY);
+      if (stored) {
+        setHasTempBlueprint(true);
+      }
+    } catch {
+      // sessionStorage未対応環境
+    }
+  }, []);
 
-  const handleBreakdownChange = (key: keyof QualityScoreBreakdown, value: number) => {
-    const maxValues: Record<keyof QualityScoreBreakdown, number> = {
-      single_anomaly: 30,
-      normal_rule_clarity: 20,
-      irreversible_point_clarity: 25,
-      no_explanations: 15,
-      reusability: 10,
-    };
-    setBreakdown(prev => ({
-      ...prev,
-      [key]: Math.min(maxValues[key], Math.max(0, value)),
-    }));
-  };
+  // 一時Blueprintを読み込む
+  const handleLoadTempBlueprint = useCallback(() => {
+    try {
+      const storedBlueprint = sessionStorage.getItem(BLUEPRINT_STORAGE_KEY);
+      const storedTags = sessionStorage.getItem(TAGS_STORAGE_KEY);
 
-  const handleAutoValidate = () => {
+      if (storedBlueprint) {
+        const blueprint = JSON.parse(storedBlueprint) as KaidanBlueprintData;
+        setBlueprintJson(JSON.stringify(blueprint, null, 2));
+
+        // タグを読み込む（抽出済みタグがあればそれを使用、なければ自動生成）
+        if (storedTags) {
+          const parsedTags = JSON.parse(storedTags) as string[];
+          setTags(parsedTags.join(", "));
+        } else {
+          const autoTags = generateTags(blueprint);
+          setTags(autoTags.join(", "));
+        }
+
+        // 読み込んだら削除
+        sessionStorage.removeItem(BLUEPRINT_STORAGE_KEY);
+        sessionStorage.removeItem(TAGS_STORAGE_KEY);
+        setHasTempBlueprint(false);
+        setStatus({ type: "success", message: "一時Blueprintとタグを読み込みました" });
+      }
+    } catch {
+      setStatus({ type: "error", message: "一時Blueprintの読み込みに失敗しました" });
+    }
+  }, []);
+
+  // 一時Blueprintを破棄
+  const handleDiscardTempBlueprint = useCallback(() => {
+    try {
+      sessionStorage.removeItem(BLUEPRINT_STORAGE_KEY);
+      sessionStorage.removeItem(TAGS_STORAGE_KEY);
+      setHasTempBlueprint(false);
+      setStatus({ type: "success", message: "一時Blueprintを破棄しました" });
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // 自動採点を実行し、スコアとwarningsを更新
+  const handleAutoValidate = useCallback(() => {
     try {
       const blueprint = JSON.parse(blueprintJson) as KaidanBlueprintData;
-      const result = autoValidate(blueprint);
-      setWarnings(result);
+      const result = scoreBlueprint(blueprint);
 
-      if (result.length === 0) {
-        setStatus({ type: "success", message: "検証OK：問題は見つかりませんでした" });
+      // スコアを更新（これが重要！）
+      setQualityScore(result.score);
+
+      // 警告を表示用に変換
+      const convertedWarnings = deductionsToWarnings(result.deductions);
+      setWarnings(convertedWarnings);
+
+      if (result.deductions.length === 0) {
+        setStatus({ type: "success", message: `採点完了: ${result.score}点（問題なし）` });
       } else {
-        const errors = result.filter(w => w.severity === "error");
-        const warns = result.filter(w => w.severity === "warning");
+        const errors = result.deductions.filter(d => d.severity === "error");
+        const warns = result.deductions.filter(d => d.severity === "warning");
         setStatus({
           type: errors.length > 0 ? "error" : "success",
-          message: `エラー: ${errors.length}件, 警告: ${warns.length}件`,
+          message: `採点完了: ${result.score}点（エラー: ${errors.length}件, 警告: ${warns.length}件, 合計減点: -${result.totalDeduction}）`,
         });
       }
     } catch {
       setStatus({ type: "error", message: "JSONの形式が不正です" });
       setWarnings([]);
+      setQualityScore(0); // パースエラー時は0点
     }
-  };
+  }, [blueprintJson]);
 
   const handleAutoGenerateTags = () => {
     try {
@@ -246,6 +176,7 @@ export default function AdminBlueprintsPage() {
     try {
       const blueprint = JSON.parse(blueprintJson);
 
+      // サーバー側で再採点されるため、quality_scoreは参考値として送信
       const response = await fetch("/api/blueprints/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -255,8 +186,6 @@ export default function AdminBlueprintsPage() {
             .split(",")
             .map((t) => t.trim())
             .filter((t) => t),
-          quality_score: qualityScore,
-          score_breakdown: breakdown,
           blueprint,
         }),
       });
@@ -267,13 +196,15 @@ export default function AdminBlueprintsPage() {
         throw new Error(data.error || "保存に失敗しました");
       }
 
-      setStatus({ type: "success", message: `保存完了 (ID: ${data.id}, スコア: ${data.quality_score})` });
+      // サーバーから返された確定スコアを表示
+      setStatus({ type: "success", message: `保存完了 (ID: ${data.id}, 確定スコア: ${data.quality_score})` });
+
       // フォームリセット
       setTitle("");
       setTags("");
-      setBreakdown(DEFAULT_BREAKDOWN);
       setBlueprintJson(JSON.stringify(DEFAULT_BLUEPRINT, null, 2));
       setWarnings([]);
+      setQualityScore(100);
     } catch (error) {
       setStatus({
         type: "error",
@@ -285,12 +216,45 @@ export default function AdminBlueprintsPage() {
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-8">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Blueprint管理</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">Blueprint管理</h1>
+          <Link
+            href="/admin/ingest"
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition-colors"
+          >
+            本文から変換 →
+          </Link>
+        </div>
         <p className="text-gray-400 mb-8">
           怪談生成のための設計図（Blueprint）を登録します。
           <br />
           ※本文は保存禁止。抽象化された構造データのみを登録してください。
         </p>
+
+        {/* 一時Blueprint読み込みバナー */}
+        {hasTempBlueprint && (
+          <div className="mb-6 p-4 bg-blue-900/50 border border-blue-600 rounded-lg">
+            <p className="text-blue-300 text-sm mb-3">
+              📥 変換画面から送られた一時Blueprintがあります
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleLoadTempBlueprint}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+              >
+                フォームに読み込む
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardTempBlueprint}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm"
+              >
+                破棄する
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* タイトル */}
@@ -331,87 +295,19 @@ export default function AdminBlueprintsPage() {
             />
           </div>
 
-          {/* 採点内訳 */}
+          {/* 品質スコア表示 */}
           <div className="p-4 bg-gray-800 rounded-lg">
-            <h3 className="text-lg font-bold mb-4">
-              品質スコア: <span className="text-red-400">{qualityScore}</span>/100
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Single Anomaly */}
-              <div>
-                <label className="block text-sm mb-1">
-                  怪異の単一性: {breakdown.single_anomaly}/30
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="30"
-                  value={breakdown.single_anomaly}
-                  onChange={(e) => handleBreakdownChange("single_anomaly", Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Normal Rule Clarity */}
-              <div>
-                <label className="block text-sm mb-1">
-                  通常時の前提が明確: {breakdown.normal_rule_clarity}/20
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="20"
-                  value={breakdown.normal_rule_clarity}
-                  onChange={(e) => handleBreakdownChange("normal_rule_clarity", Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Irreversible Point Clarity */}
-              <div>
-                <label className="block text-sm mb-1">
-                  不可逆の確定が明確: {breakdown.irreversible_point_clarity}/25
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="25"
-                  value={breakdown.irreversible_point_clarity}
-                  onChange={(e) => handleBreakdownChange("irreversible_point_clarity", Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* No Explanations */}
-              <div>
-                <label className="block text-sm mb-1">
-                  説明に逃げていない: {breakdown.no_explanations}/15
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="15"
-                  value={breakdown.no_explanations}
-                  onChange={(e) => handleBreakdownChange("no_explanations", Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Reusability */}
-              <div>
-                <label className="block text-sm mb-1">
-                  転用可能性: {breakdown.reusability}/10
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  value={breakdown.reusability}
-                  onChange={(e) => handleBreakdownChange("reusability", Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold">
+                品質スコア: <span className={`${qualityScore >= 70 ? "text-green-400" : qualityScore >= 50 ? "text-yellow-400" : "text-red-400"}`}>{qualityScore}</span>/100
+              </h3>
+              <span className="text-sm text-gray-400">
+                {qualityScore >= 70 ? "優先使用" : qualityScore >= 50 ? "通常使用" : "低品質"}
+              </span>
             </div>
+            <p className="text-xs text-gray-500 mt-2">
+              ※「自動採点」ボタンでスコアが算出されます。保存時にサーバーで再採点されます。
+            </p>
           </div>
 
           {/* Blueprint JSON */}

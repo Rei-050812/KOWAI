@@ -25,13 +25,33 @@ function getSupabaseClient(): SupabaseClient {
   return supabase;
 }
 
+// =============================================
+// ヘルパー関数
+// =============================================
+
+/**
+ * DBから取得したstoryデータをStoryWithScore型に変換
+ * share_count, scoreのnull対応を一元化
+ */
+function toStoryWithScore(data: unknown[]): StoryWithScore[] {
+  return (data || []).map((story) => {
+    const s = story as Record<string, unknown>;
+    return {
+      ...s,
+      share_count: (s.share_count as number) || 0,
+      score: (s.score as number) || 0,
+    } as StoryWithScore;
+  });
+}
+
 // 怪談を作成
 export async function createStory(
   word: string,
   style: StoryStyle,
   title: string,
   hook: string,
-  story: string
+  story: string,
+  blueprintId: number | null = null
 ): Promise<Story> {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -44,6 +64,7 @@ export async function createStory(
       story,
       likes: 0,
       views: 0,
+      blueprint_id: blueprintId,
     })
     .select()
     .single();
@@ -230,11 +251,7 @@ export async function getHallOfFameStories(limit: number = 50): Promise<StoryWit
     throw new Error("殿堂入りの取得に失敗しました");
   }
 
-  return (data || []).map(story => ({
-    ...story,
-    share_count: story.share_count || 0,
-    score: story.score || 0,
-  })) as StoryWithScore[];
+  return toStoryWithScore(data || []);
 }
 
 // 週間ランキング（過去7日間、スコア上位20件）
@@ -255,11 +272,7 @@ export async function getWeeklyRankingStories(limit: number = 20): Promise<Story
     throw new Error("週間ランキングの取得に失敗しました");
   }
 
-  return (data || []).map(story => ({
-    ...story,
-    share_count: story.share_count || 0,
-    score: story.score || 0,
-  })) as StoryWithScore[];
+  return toStoryWithScore(data || []);
 }
 
 // 月間ランキング（過去30日間、スコア上位30件）
@@ -280,11 +293,7 @@ export async function getMonthlyRankingStories(limit: number = 30): Promise<Stor
     throw new Error("月間ランキングの取得に失敗しました");
   }
 
-  return (data || []).map(story => ({
-    ...story,
-    share_count: story.share_count || 0,
-    score: story.score || 0,
-  })) as StoryWithScore[];
+  return toStoryWithScore(data || []);
 }
 
 // Hidden Gems（閲覧10-100、いいね3以上、いいね率10%以上）
@@ -310,11 +319,7 @@ export async function getHiddenGems(limit: number = 20): Promise<StoryWithScore[
     .filter(story => (story.likes / story.views) >= 0.1)
     .slice(0, limit);
 
-  return filteredData.map(story => ({
-    ...story,
-    share_count: story.share_count || 0,
-    score: story.score || 0,
-  })) as StoryWithScore[];
+  return toStoryWithScore(filteredData);
 }
 
 // トレンド単語（24時間比較、成長率計算）
@@ -390,11 +395,7 @@ export async function getStoriesByStyle(style: StoryStyle, limit: number = 20): 
     throw new Error("スタイル別怪談の取得に失敗しました");
   }
 
-  return (data || []).map(story => ({
-    ...story,
-    share_count: story.share_count || 0,
-    score: story.score || 0,
-  })) as StoryWithScore[];
+  return toStoryWithScore(data || []);
 }
 
 // シェア数をインクリメント
@@ -472,11 +473,7 @@ export async function getRandomStories(limit: number = 5): Promise<StoryWithScor
     throw new Error("ランダム怪談の取得に失敗しました");
   }
 
-  return (data || []).map(story => ({
-    ...story,
-    share_count: story.share_count || 0,
-    score: story.score || 0,
-  })) as StoryWithScore[];
+  return toStoryWithScore(data || []);
 }
 
 // =============================================
@@ -590,4 +587,55 @@ export async function getAllBlueprints(limit: number = 100): Promise<{
   }
 
   return data || [];
+}
+
+/**
+ * 全Blueprintをフルデータで取得（正規化用）
+ */
+export async function getAllBlueprintsFull(): Promise<{
+  id: number;
+  title: string;
+  tags: string[];
+  blueprint: KaidanBlueprintData;
+  quality_score: number;
+  created_at: string;
+}[]> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client
+    .from("kaidan_blueprints")
+    .select("*")
+    .order("id", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching full blueprints:", error);
+    throw new Error("Blueprintの取得に失敗しました");
+  }
+
+  return data || [];
+}
+
+/**
+ * Blueprintを更新
+ */
+export async function updateBlueprint(
+  id: number,
+  blueprint: KaidanBlueprintData,
+  qualityScore: number
+): Promise<void> {
+  const client = getSupabaseClient();
+
+  const { error } = await client
+    .from("kaidan_blueprints")
+    .update({
+      blueprint,
+      quality_score: qualityScore,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Error updating blueprint:", error);
+    throw new Error("Blueprintの更新に失敗しました");
+  }
 }

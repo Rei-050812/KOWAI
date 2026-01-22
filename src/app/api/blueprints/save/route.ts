@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SaveBlueprintRequest, KaidanBlueprintData, QualityScoreBreakdown } from "@/types";
+import { SaveBlueprintRequest, KaidanBlueprintData } from "@/types";
 import { saveBlueprint } from "@/lib/supabase";
+import { scoreBlueprint } from "@/lib/blueprint-scoring";
 
 /**
  * Blueprintの必須フィールドを検証
@@ -45,49 +46,6 @@ function validateBlueprint(blueprint: unknown): blueprint is KaidanBlueprintData
 }
 
 /**
- * 詳細バリデーション（内容の品質チェック）
- */
-function validateBlueprintContent(blueprint: KaidanBlueprintData): string[] {
-  const errors: string[] = [];
-
-  // anomalyが空または短すぎる
-  if (!blueprint.anomaly || blueprint.anomaly.trim().length < 5) {
-    errors.push("anomaly（怪異の核）が未設定または短すぎます（5文字以上必要）");
-  }
-
-  // normal_ruleが空または短すぎる
-  if (!blueprint.normal_rule || blueprint.normal_rule.trim().length < 5) {
-    errors.push("normal_rule（通常時の前提）が未設定または短すぎます（5文字以上必要）");
-  }
-
-  // irreversible_pointが空または短すぎる
-  if (!blueprint.irreversible_point || blueprint.irreversible_point.trim().length < 5) {
-    errors.push("irreversible_point（不可逆の確定点）が未設定または短すぎます（5文字以上必要）");
-  }
-
-  // single_anomaly_onlyがfalse（これは必須）
-  if (!blueprint.constraints.single_anomaly_only) {
-    errors.push("constraints.single_anomaly_onlyはtrueである必要があります");
-  }
-
-  return errors;
-}
-
-/**
- * 内訳からスコアを算出
- */
-function calculateScoreFromBreakdown(breakdown: QualityScoreBreakdown): number {
-  // 各項目の上限を適用
-  const single_anomaly = Math.min(30, Math.max(0, breakdown.single_anomaly || 0));
-  const normal_rule_clarity = Math.min(20, Math.max(0, breakdown.normal_rule_clarity || 0));
-  const irreversible_point_clarity = Math.min(25, Math.max(0, breakdown.irreversible_point_clarity || 0));
-  const no_explanations = Math.min(15, Math.max(0, breakdown.no_explanations || 0));
-  const reusability = Math.min(10, Math.max(0, breakdown.reusability || 0));
-
-  return single_anomaly + normal_rule_clarity + irreversible_point_clarity + no_explanations + reusability;
-}
-
-/**
  * Blueprintからタグを自動生成（補助）
  */
 function generateAutoTags(blueprint: KaidanBlueprintData): string[] {
@@ -110,7 +68,8 @@ function generateAutoTags(blueprint: KaidanBlueprintData): string[] {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as SaveBlueprintRequest;
-    const { title, tags, quality_score, score_breakdown, blueprint } = body;
+    // クライアントからのquality_scoreは無視（サーバーで再採点）
+    const { title, tags, blueprint } = body;
 
     // タイトルバリデーション
     if (!title || typeof title !== "string" || title.trim().length === 0) {
@@ -128,30 +87,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 詳細バリデーション
-    const contentErrors = validateBlueprintContent(blueprint);
-    if (contentErrors.length > 0) {
-      return NextResponse.json(
-        { error: contentErrors.join("; ") },
-        { status: 400 }
-      );
-    }
+    // ===== サーバー側で再採点（これが正） =====
+    const scoringResult = scoreBlueprint(blueprint);
+    const finalScore = scoringResult.score;
 
-    // スコア算出
-    let finalScore: number;
-    if (score_breakdown) {
-      // 内訳から算出
-      finalScore = calculateScoreFromBreakdown(score_breakdown);
-    } else if (typeof quality_score === "number") {
-      // 直接指定
-      finalScore = quality_score;
-    } else {
-      // デフォルト
-      finalScore = 50;
+    // 重大なエラーがある場合は警告（保存は許可）
+    const errors = scoringResult.deductions.filter(d => d.severity === "error");
+    if (errors.length > 0) {
+      // エラーがあっても保存は可能（低スコアとして記録される）
     }
-
-    // 範囲チェック（0-100）
-    finalScore = Math.min(100, Math.max(0, finalScore));
 
     // タグの正規化
     let normalizedTags = Array.isArray(tags)
@@ -163,7 +107,7 @@ export async function POST(request: NextRequest) {
       normalizedTags = generateAutoTags(blueprint);
     }
 
-    // 保存
+    // 保存（サーバー採点したスコアを使用）
     const result = await saveBlueprint(
       title.trim(),
       normalizedTags,
@@ -174,9 +118,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       id: result.id,
-      quality_score: finalScore,
+      quality_score: finalScore, // サーバーで算出した確定スコア
       tags: normalizedTags,
-      message: "Blueprintを保存しました",
+      deductions: scoringResult.deductions, // 減点理由も返す
+      message: `Blueprintを保存しました（スコア: ${finalScore}点）`,
     });
   } catch (error) {
     console.error("Error saving blueprint:", error);
