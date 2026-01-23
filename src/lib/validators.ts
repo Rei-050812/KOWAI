@@ -1,5 +1,8 @@
 /**
  * 生成テキストのバリデーション関数群
+ * - Phase A 文数制限チェック
+ * - Phase A 禁止語句チェック
+ * - Phase A / B 類似判定
  * - 未完セリフ検出
  * - キーワード検出
  */
@@ -823,6 +826,295 @@ export function validateActionConsistency(
   return {
     isValid: true,
     reason: null,
+    details: '',
+  };
+}
+
+// =============================================
+// Phase A 文数制限チェック
+// =============================================
+
+/**
+ * Phase A 禁止語句パターン
+ * - 感想: 不思議な、奇妙な、違和感、気になる 等
+ * - 予告: まさか〜とは、後に〜、この時はまだ〜 等
+ * - 未来視点: 〜とは思わなかった、〜とは知らなかった 等
+ * - 不穏さの示唆: 何かが、妙に、いつもと違う 等
+ * - 心情描写: 嫌な予感、落ち着かない、気が重い 等
+ */
+const PHASE_A_FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
+  // 予告・未来視点
+  { pattern: /まさか.{0,20}とは/, category: '予告' },
+  { pattern: /この時はまだ/, category: '予告' },
+  { pattern: /後に.{0,10}(?:なる|起き|分か)/, category: '予告' },
+  { pattern: /とは(?:思わなかった|知らなかった|気づかなかった)/, category: '未来視点' },
+  { pattern: /(?:あんな|こんな)ことになる/, category: '予告' },
+  { pattern: /(?:思い|知り)もしなかった/, category: '未来視点' },
+
+  // 感想・不穏さの示唆
+  { pattern: /不思議(?:な|に|と)/, category: '感想' },
+  { pattern: /奇妙(?:な|に|と)/, category: '感想' },
+  { pattern: /違和感/, category: '感想' },
+  { pattern: /気になる/, category: '感想' },
+  { pattern: /何かが(?:おかしい|違う)/, category: '不穏' },
+  { pattern: /妙(?:な|に)/, category: '不穏' },
+  { pattern: /いつもと(?:違う|異なる)/, category: '不穏' },
+  { pattern: /(?:どこか|なんとなく).{0,5}(?:変|おかしい|違和感)/, category: '不穏' },
+
+  // 心情描写
+  { pattern: /嫌な予感/, category: '心情' },
+  { pattern: /落ち着かない/, category: '心情' },
+  { pattern: /気が重い/, category: '心情' },
+  { pattern: /胸騒ぎ/, category: '心情' },
+  { pattern: /不安(?:な|に|を)/, category: '心情' },
+  { pattern: /怖(?:い|かった|く)/, category: '心情' },
+
+  // 形容詞による雰囲気付け
+  { pattern: /不気味(?:な|に)/, category: '雰囲気' },
+  { pattern: /薄暗い/, category: '雰囲気' },
+  { pattern: /薄気味悪い/, category: '雰囲気' },
+  { pattern: /(?:ひっそり|しん)と(?:静|し)/, category: '雰囲気' },
+];
+
+/**
+ * 文を句点で分割して文数をカウント
+ */
+function countSentences(text: string): number {
+  const normalized = text.trim();
+  if (normalized.length === 0) return 0;
+
+  // 句点（。！？）で分割
+  const sentences = normalized.split(/[。！？]+/).filter(s => s.trim().length > 0);
+
+  // 最後が句点で終わらない場合も1文としてカウント
+  if (sentences.length === 0 && normalized.length > 0) {
+    return 1;
+  }
+
+  return sentences.length;
+}
+
+/**
+ * Phase A 文数制限チェック結果
+ */
+export interface PhaseASentenceCheckResult {
+  isValid: boolean;
+  sentenceCount: number;
+  details: string;
+}
+
+/**
+ * Phase A が1文以内かチェック
+ * @param text Phase A のテキスト
+ * @returns 文数チェック結果
+ */
+export function validatePhaseASentenceCount(text: string): PhaseASentenceCheckResult {
+  const sentenceCount = countSentences(text);
+
+  if (sentenceCount > 1) {
+    return {
+      isValid: false,
+      sentenceCount,
+      details: `Phase A が${sentenceCount}文あります（最大1文）`,
+    };
+  }
+
+  return {
+    isValid: true,
+    sentenceCount,
+    details: '',
+  };
+}
+
+/**
+ * Phase A 禁止語句チェック結果
+ */
+export interface PhaseAForbiddenCheckResult {
+  isValid: boolean;
+  forbiddenWords: Array<{ word: string; category: string }>;
+  details: string;
+}
+
+/**
+ * Phase A に禁止語句が含まれていないかチェック
+ * @param text Phase A のテキスト
+ * @returns 禁止語句チェック結果
+ */
+export function validatePhaseAForbiddenWords(text: string): PhaseAForbiddenCheckResult {
+  const forbiddenWords: Array<{ word: string; category: string }> = [];
+
+  for (const { pattern, category } of PHASE_A_FORBIDDEN_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) {
+      forbiddenWords.push({ word: match[0], category });
+    }
+  }
+
+  if (forbiddenWords.length > 0) {
+    const details = forbiddenWords
+      .map(fw => `「${fw.word}」(${fw.category})`)
+      .join(', ');
+    return {
+      isValid: false,
+      forbiddenWords,
+      details: `Phase A に禁止語句: ${details}`,
+    };
+  }
+
+  return {
+    isValid: true,
+    forbiddenWords: [],
+    details: '',
+  };
+}
+
+/**
+ * Phase A 総合バリデーション結果
+ */
+export interface PhaseAValidationResult {
+  isValid: boolean;
+  sentenceCheck: PhaseASentenceCheckResult;
+  forbiddenCheck: PhaseAForbiddenCheckResult;
+  reason: 'sentence_count' | 'forbidden_word' | null;
+  details: string;
+}
+
+/**
+ * Phase A 総合バリデーション
+ * @param text Phase A のテキスト
+ * @returns 総合バリデーション結果
+ */
+export function validatePhaseA(text: string): PhaseAValidationResult {
+  const sentenceCheck = validatePhaseASentenceCount(text);
+  const forbiddenCheck = validatePhaseAForbiddenWords(text);
+
+  // 文数制限を優先
+  if (!sentenceCheck.isValid) {
+    return {
+      isValid: false,
+      sentenceCheck,
+      forbiddenCheck,
+      reason: 'sentence_count',
+      details: sentenceCheck.details,
+    };
+  }
+
+  if (!forbiddenCheck.isValid) {
+    return {
+      isValid: false,
+      sentenceCheck,
+      forbiddenCheck,
+      reason: 'forbidden_word',
+      details: forbiddenCheck.details,
+    };
+  }
+
+  return {
+    isValid: true,
+    sentenceCheck,
+    forbiddenCheck,
+    reason: null,
+    details: '',
+  };
+}
+
+// =============================================
+// Phase A / B 類似判定（強化版）
+// =============================================
+
+/**
+ * Phase B 禁止開始パターン（Phase A の再掲を検出）
+ * - 主語＋状態動詞
+ * - 場所・設定の説明文
+ */
+const PHASE_B_FORBIDDEN_START_PATTERNS: Array<{ pattern: RegExp; description: string }> = [
+  // 状態動詞での開始（Phase A と同じ文型になりやすい）
+  { pattern: /^.{0,20}(?:だった|であった|ていた|にいた|であり)/, description: '状態動詞での開始' },
+
+  // 場所の再説明
+  { pattern: /^(?:その|この|あの)(?:アパート|マンション|家|部屋|会社|学校|道|場所)(?:は|には|では|で)/, description: '場所の再説明' },
+
+  // 設定の再説明
+  { pattern: /^(?:そこ|ここ|あそこ)(?:は|には|では)/, description: '設定の再説明' },
+];
+
+/**
+ * Phase A / B 類似判定結果（強化版）
+ */
+export interface PhaseABSimilarityResult {
+  isValid: boolean;
+  reason: 'high_similarity' | 'forbidden_start' | 'same_subject' | null;
+  similarity: number;
+  details: string;
+}
+
+/**
+ * 主語を抽出
+ */
+function extractSubject(text: string): string | null {
+  const normalized = normalizeText(text);
+  // 最初の助詞までを主語とみなす
+  const match = normalized.match(/^([^はがもを]{1,20})[はがもを]/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Phase A / B の類似度を詳細にチェック（強化版）
+ * @param phaseA Phase A のテキスト
+ * @param phaseB Phase B のテキスト
+ * @returns 類似判定結果
+ */
+export function validatePhaseABSimilarity(
+  phaseA: string,
+  phaseB: string
+): PhaseABSimilarityResult {
+  const headA = extractFirstSentenceForCheck(phaseA);
+  const headB = extractFirstSentenceForCheck(phaseB);
+
+  // 1. 完全一致または高い類似度
+  const similarity = calculateTextSimilarity(headA, headB);
+  if (similarity >= 0.6) {
+    return {
+      isValid: false,
+      reason: 'high_similarity',
+      similarity,
+      details: `Phase A と Phase B の冒頭が高い類似度 (${Math.round(similarity * 100)}%)`,
+    };
+  }
+
+  // 2. 禁止開始パターン
+  for (const { pattern, description } of PHASE_B_FORBIDDEN_START_PATTERNS) {
+    if (pattern.test(phaseB.trim())) {
+      return {
+        isValid: false,
+        reason: 'forbidden_start',
+        similarity,
+        details: `Phase B が禁止パターンで開始: ${description}`,
+      };
+    }
+  }
+
+  // 3. 同じ主語で開始
+  const subjectA = extractSubject(phaseA);
+  const subjectB = extractSubject(phaseB);
+  if (subjectA && subjectB && subjectA === subjectB) {
+    // Phase A と Phase B が同じ主語で始まる場合
+    // ただし「私」「俺」などの一般的な一人称は許容
+    const commonFirstPersons = ['私', '俺', '僕', '自分'];
+    if (!commonFirstPersons.includes(subjectA)) {
+      return {
+        isValid: false,
+        reason: 'same_subject',
+        similarity,
+        details: `Phase A と Phase B が同じ主語「${subjectA}」で開始`,
+      };
+    }
+  }
+
+  return {
+    isValid: true,
+    reason: null,
+    similarity,
     details: '',
   };
 }

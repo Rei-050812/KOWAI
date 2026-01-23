@@ -19,7 +19,19 @@ import {
   getRecentStoryMetas,
 } from "@/lib/supabase";
 import { getGenericBlueprint, isGenericBlueprint } from "@/lib/generic-blueprint";
-import { validatePhaseText, containsKeyword, validatePhaseCClimax, validateKeywordFocus, validatePhaseBOverlap, validateEventRepetition, validateActionConsistency } from "@/lib/validators";
+import {
+  validatePhaseText,
+  containsKeyword,
+  validatePhaseCClimax,
+  validateKeywordFocus,
+  validatePhaseBOverlap,
+  validateEventRepetition,
+  validateActionConsistency,
+  validatePhaseA,
+  validatePhaseABSimilarity,
+  PhaseAValidationResult,
+  PhaseABSimilarityResult,
+} from "@/lib/validators";
 import { deduplicatePhases, DedupeLog } from "@/lib/dedupe";
 import { extractStoryMeta, StoryMeta, shouldTriggerDiversityGuard, buildDiversityAvoidanceHint, buildVocabCooldownList, buildVocabCooldownHint } from "@/lib/diversity";
 
@@ -101,6 +113,17 @@ interface ValidationStats {
   // 語彙クールダウン（内部ログ用）
   repeatedVocabDetected: boolean;
   avoidedVocab: string[];
+  // Phase A 文数制限/禁止語句チェック（内部ログ用）
+  phaseASentenceCountViolation: boolean;
+  phaseASentenceCount: number;
+  phaseAForbiddenWordDetected: boolean;
+  phaseAForbiddenWords: string[];
+  phaseAValidationRetryCount: number;
+  // Phase A / B 類似判定（内部ログ用）
+  phaseABSimilarityViolation: boolean;
+  phaseABSimilarityScore: number;
+  phaseABSimilarityReason: 'high_similarity' | 'forbidden_start' | 'same_subject' | null;
+  phaseABSimilarityRetryCount: number;
 }
 
 // =============================================
@@ -306,6 +329,17 @@ async function executeThreePhaseGeneration(
     // 語彙クールダウン（内部ログ用）
     repeatedVocabDetected: false,
     avoidedVocab: [],
+    // Phase A 文数制限/禁止語句チェック（内部ログ用）
+    phaseASentenceCountViolation: false,
+    phaseASentenceCount: 0,
+    phaseAForbiddenWordDetected: false,
+    phaseAForbiddenWords: [],
+    phaseAValidationRetryCount: 0,
+    // Phase A / B 類似判定（内部ログ用）
+    phaseABSimilarityViolation: false,
+    phaseABSimilarityScore: 0,
+    phaseABSimilarityReason: null,
+    phaseABSimilarityRetryCount: 0,
   };
 
   // 多様性ヒントを構築
@@ -320,34 +354,61 @@ async function executeThreePhaseGeneration(
     console.log(`[VocabCooldown] Avoid list: ${vocabCooldown.avoidList.join(', ')}`);
   }
 
-  // Phase A: opening（キーワード必須）+ 多様性ガード
+  // Phase A: opening（最大1文のみ）+ 多様性ガード + 文数制限/禁止語句チェック
   // 対策1: Phase A は必ず「上書き」する（append/push/concat 禁止）
   let phaseAText = '';
   let phaseAPrompt = '';
+  const MAX_PHASE_A_VALIDATION_RETRY = 2;
 
-  for (let diversityAttempt = 0; diversityAttempt <= 1; diversityAttempt++) {
-    phaseAPrompt = buildPhaseAPrompt(bp.normal_rule, style, word, bp.detail_bank, diversityAttempt > 0 ? diversityHint : '', vocabCooldownHint);
-    console.log(`[Phase A] generating opening... (diversity attempt ${diversityAttempt + 1})`);
-    const phaseAResult = await generatePhaseAWithRetry(phaseAPrompt, word);
-    stats.retryCountPhaseA = phaseAResult.retryCount;
-    stats.keywordMissDetected = phaseAResult.keywordMiss;
-    // 対策1: 常に上書き（phaseAText = newText）
-    phaseAText = phaseAResult.text;
+  phaseAGenerationLoop:
+  for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_A_VALIDATION_RETRY; validationAttempt++) {
+    for (let diversityAttempt = 0; diversityAttempt <= 1; diversityAttempt++) {
+      phaseAPrompt = buildPhaseAPrompt(bp.normal_rule, style, word, bp.detail_bank, diversityAttempt > 0 ? diversityHint : '', vocabCooldownHint);
+      console.log(`[Phase A] generating opening... (validation attempt ${validationAttempt + 1}, diversity attempt ${diversityAttempt + 1})`);
+      const phaseAResult = await generatePhaseAWithRetry(phaseAPrompt, word);
+      stats.retryCountPhaseA = phaseAResult.retryCount;
+      stats.keywordMissDetected = phaseAResult.keywordMiss;
+      // 対策1: 常に上書き（phaseAText = newText）
+      phaseAText = phaseAResult.text;
 
-    // 多様性チェック（初回のみ）
-    if (diversityAttempt === 0 && recentMetas.length > 0) {
-      const currentMeta = extractStoryMeta(phaseAText);
-      const diversityCheck = shouldTriggerDiversityGuard(currentMeta, recentMetas);
+      // 多様性チェック（初回のみ）
+      if (diversityAttempt === 0 && recentMetas.length > 0) {
+        const currentMeta = extractStoryMeta(phaseAText);
+        const diversityCheck = shouldTriggerDiversityGuard(currentMeta, recentMetas);
 
-      if (diversityCheck.shouldRetry) {
-        console.log(`[Diversity] guard triggered: ${diversityCheck.reason}, retrying Phase A`);
-        stats.diversityGuardTriggered = true;
-        stats.diversityGuardReason = diversityCheck.reason;
-        stats.diversityRetryCount = 1;
-        continue; // 再生成
+        if (diversityCheck.shouldRetry) {
+          console.log(`[Diversity] guard triggered: ${diversityCheck.reason}, retrying Phase A`);
+          stats.diversityGuardTriggered = true;
+          stats.diversityGuardReason = diversityCheck.reason;
+          stats.diversityRetryCount = 1;
+          continue; // 再生成（多様性）
+        }
       }
+      break; // 多様性OK or 再生成完了
     }
-    break; // 多様性OK or 再生成完了
+
+    // Phase A 文数制限/禁止語句チェック
+    const phaseAValidation = validatePhaseA(phaseAText);
+    stats.phaseASentenceCount = phaseAValidation.sentenceCheck.sentenceCount;
+
+    if (!phaseAValidation.isValid) {
+      if (phaseAValidation.reason === 'sentence_count') {
+        stats.phaseASentenceCountViolation = true;
+        console.log(`[Phase A Validation] ${phaseAValidation.details}, retry ${validationAttempt + 1}/${MAX_PHASE_A_VALIDATION_RETRY + 1}`);
+      } else if (phaseAValidation.reason === 'forbidden_word') {
+        stats.phaseAForbiddenWordDetected = true;
+        stats.phaseAForbiddenWords = phaseAValidation.forbiddenCheck.forbiddenWords.map(fw => fw.word);
+        console.log(`[Phase A Validation] ${phaseAValidation.details}, retry ${validationAttempt + 1}/${MAX_PHASE_A_VALIDATION_RETRY + 1}`);
+      }
+      stats.phaseAValidationRetryCount = validationAttempt + 1;
+
+      if (validationAttempt < MAX_PHASE_A_VALIDATION_RETRY) {
+        continue phaseAGenerationLoop; // 再生成
+      }
+      // 最大リトライ到達、現在の結果を使用
+      console.log(`[Phase A Validation] max retry reached, proceeding with current result`);
+    }
+    break phaseAGenerationLoop; // バリデーションOK
   }
 
   // Phase B: disturbance（続き書き専用 + 導入文被り/出来事再描写/行動整合性チェック）
@@ -374,6 +435,18 @@ async function executeThreePhaseGeneration(
       stats.phaseBOverlapRetryCount = validationAttempt + 1;
       console.log(`[Phase B Overlap] ${overlapCheck.details}`);
       console.log(`[Phase B Overlap Internal] phaseB_overlap_detected: true, phaseB_overlap_reason: ${overlapCheck.reason}, phaseB_overlap_retry_count: ${validationAttempt + 1}`);
+      shouldRetry = true;
+    }
+
+    // 1.5. Phase A / B 類似判定（強化版）
+    const similarityCheck = validatePhaseABSimilarity(phaseAText, phaseBText);
+    if (!similarityCheck.isValid) {
+      stats.phaseABSimilarityViolation = true;
+      stats.phaseABSimilarityScore = similarityCheck.similarity;
+      stats.phaseABSimilarityReason = similarityCheck.reason;
+      stats.phaseABSimilarityRetryCount = validationAttempt + 1;
+      console.log(`[Phase A/B Similarity] ${similarityCheck.details}`);
+      console.log(`[Phase A/B Similarity Internal] similarity_violation: true, score: ${similarityCheck.similarity.toFixed(2)}, reason: ${similarityCheck.reason}, retry_count: ${validationAttempt + 1}`);
       shouldRetry = true;
     }
 
@@ -704,13 +777,17 @@ export async function POST(request: NextRequest) {
     const hasEventRepetition = stats.eventRepetitionDetected;
     const hasActionConsistencyIssue = stats.actionConsistencyIssueDetected;
     const hasVocabCooldown = stats.repeatedVocabDetected;
+    const hasPhaseAValidationIssue = stats.phaseASentenceCountViolation || stats.phaseAForbiddenWordDetected;
+    const hasPhaseABSimilarityIssue = stats.phaseABSimilarityViolation;
 
-    if (hasRetries || hasGuards || hasKeywordIssue || hasPhaseBOverlap || hasEventRepetition || hasActionConsistencyIssue || hasVocabCooldown) {
+    if (hasRetries || hasGuards || hasKeywordIssue || hasPhaseBOverlap || hasEventRepetition || hasActionConsistencyIssue || hasVocabCooldown || hasPhaseAValidationIssue || hasPhaseABSimilarityIssue) {
       console.log(
         `[Stats] retries: A=${stats.retryCountPhaseA}, B=${stats.retryCountPhaseB}, C=${stats.retryCountPhaseC}, ` +
           `keywordMiss=${stats.keywordMissDetected}, incompleteQuote=${stats.incompleteQuoteDetected}, ` +
           `dedupe=${stats.dedupeApplied}, diversity=${stats.diversityGuardTriggered}, ` +
           `endingRetry=${stats.endingRetryCount}, keywordFocus=${stats.keywordFocusOk}(count=${stats.keywordFocusCount}), ` +
+          `phaseAValidation=${hasPhaseAValidationIssue}(sentences=${stats.phaseASentenceCount}, forbidden=${stats.phaseAForbiddenWords.join(',')}, retry=${stats.phaseAValidationRetryCount}), ` +
+          `phaseABSimilarity=${stats.phaseABSimilarityViolation}(score=${stats.phaseABSimilarityScore.toFixed(2)}, reason=${stats.phaseABSimilarityReason}, retry=${stats.phaseABSimilarityRetryCount}), ` +
           `phaseBOverlap=${stats.phaseBOverlapDetected}(reason=${stats.phaseBOverlapReason}, retry=${stats.phaseBOverlapRetryCount}), ` +
           `eventRepetition=${stats.eventRepetitionDetected}(retry=${stats.eventRepetitionRetryCount}), ` +
           `actionConsistency=${stats.actionConsistencyIssueDetected}(reason=${stats.actionConsistencyReason}, retry=${stats.actionConsistencyRetryCount}), ` +
