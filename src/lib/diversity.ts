@@ -1,6 +1,7 @@
 /**
  * 連続多様性ガード
  * 直近の怪談と舞台/人物/流れが似すぎないように制御
+ * + 語彙クールダウン制御
  */
 
 // =============================================
@@ -15,6 +16,8 @@ export interface StoryMeta {
   setting: SettingType;
   cast: CastType;
   flow: FlowType;
+  // 語彙クールダウン用：抽出した特徴的な名詞
+  notableNouns?: string[];
 }
 
 export interface DiversityCheckResult {
@@ -120,6 +123,7 @@ export function extractStoryMeta(storyText: string): StoryMeta {
     setting: detectSetting(storyText),
     cast: detectCast(storyText),
     flow: detectFlow(storyText),
+    notableNouns: extractNotableNouns(storyText),
   };
 }
 
@@ -209,4 +213,122 @@ export function buildDiversityAvoidanceHint(recentMetas: StoryMeta[]): string {
   }
 
   return hints.length > 0 ? `\n\n多様性確保のため: ${hints.join('、')}` : '';
+}
+
+// =============================================
+// 語彙クールダウン制御
+// =============================================
+
+/**
+ * 特徴的な名詞（小道具・道具・場所・物体）のパターン
+ * 怪談で繰り返し使われやすい名詞を抽出
+ */
+const NOTABLE_NOUN_PATTERNS = [
+  // 観察道具
+  /双眼鏡/g, /望遠鏡/g, /カメラ/g, /ビデオカメラ/g, /スマホ/g, /携帯/g,
+  // 照明
+  /懐中電灯/g, /ライト/g, /ランタン/g, /蝋燭/g, /ろうそく/g,
+  // 乗り物
+  /自転車/g, /バイク/g, /オートバイ/g, /車/g, /タクシー/g, /バス/g,
+  // 通信
+  /電話/g, /インターホン/g, /チャイム/g, /ベル/g,
+  // 家具・建具
+  /鏡/g, /時計/g, /テレビ/g, /ラジオ/g, /冷蔵庫/g,
+  /ドア/g, /扉/g, /窓/g, /カーテン/g, /障子/g, /襖/g,
+  // 収納
+  /押入れ/g, /クローゼット/g, /箪笥/g, /タンス/g, /引き出し/g,
+  // 場所・建物
+  /井戸/g, /池/g, /川/g, /橋/g, /トンネル/g, /洞窟/g,
+  /神社/g, /寺/g, /墓地/g, /墓/g, /祠/g, /鳥居/g,
+  /廃墟/g, /廃屋/g, /空き家/g, /廃病院/g, /廃校/g,
+  // 自然物
+  /木/g, /森/g, /林/g, /山/g, /海/g, /湖/g,
+  // 物品
+  /人形/g, /ぬいぐるみ/g, /写真/g, /絵/g, /手紙/g, /日記/g,
+  /箱/g, /壺/g, /お札/g, /御札/g, /お守り/g,
+  // 身体部位（怪異の特徴）
+  /目/g, /手/g, /足/g, /顔/g, /髪/g, /指/g,
+  // 音
+  /足音/g, /物音/g, /笑い声/g, /泣き声/g, /囁き/g,
+];
+
+/**
+ * テキストから特徴的な名詞を抽出
+ */
+export function extractNotableNouns(text: string): string[] {
+  const nouns: string[] = [];
+
+  for (const pattern of NOTABLE_NOUN_PATTERNS) {
+    // パターンをリセット（グローバルフラグ対策）
+    pattern.lastIndex = 0;
+    const matches = text.match(pattern);
+    if (matches) {
+      nouns.push(...matches);
+    }
+  }
+
+  // 重複排除して出現回数でソート
+  const nounCounts = new Map<string, number>();
+  for (const noun of nouns) {
+    nounCounts.set(noun, (nounCounts.get(noun) || 0) + 1);
+  }
+
+  // 出現回数が多い順にソートして返す
+  return [...nounCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([noun]) => noun);
+}
+
+/**
+ * 語彙クールダウンチェック結果
+ */
+export interface VocabCooldownResult {
+  avoidList: string[];
+  detected: boolean;
+}
+
+/**
+ * 直近のストーリーから高頻度名詞を抽出してクールダウンリストを生成
+ * @param recentMetas 直近のストーリーメタ情報
+ * @param maxItems 最大項目数
+ */
+export function buildVocabCooldownList(
+  recentMetas: StoryMeta[],
+  maxItems: number = 5
+): VocabCooldownResult {
+  if (recentMetas.length === 0) {
+    return { avoidList: [], detected: false };
+  }
+
+  // 直近のストーリーから名詞を集計
+  const nounCounts = new Map<string, number>();
+
+  for (const meta of recentMetas) {
+    if (meta.notableNouns) {
+      for (const noun of meta.notableNouns) {
+        nounCounts.set(noun, (nounCounts.get(noun) || 0) + 1);
+      }
+    }
+  }
+
+  // 2回以上出現した名詞をクールダウン対象に
+  const frequentNouns = [...nounCounts.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxItems)
+    .map(([noun]) => noun);
+
+  return {
+    avoidList: frequentNouns,
+    detected: frequentNouns.length > 0,
+  };
+}
+
+/**
+ * 語彙クールダウン用のプロンプトヒントを生成
+ */
+export function buildVocabCooldownHint(avoidList: string[]): string {
+  if (avoidList.length === 0) return '';
+
+  return `\n\n【語彙多様性】直近で頻出した以下の語彙は可能な限り避け、別の表現・道具を使ってください: ${avoidList.join('、')}`;
 }

@@ -407,13 +407,15 @@ irreversible_point:
 /**
  * Phase A用プロンプトを生成
  * @param diversityHint 多様性確保のためのヒント（オプション）
+ * @param vocabCooldownHint 語彙クールダウンのヒント（オプション）
  */
 export function buildPhaseAPrompt(
   normalRule: string,
   style: StoryStyle,
   word: string,
   detailBank: string[],
-  diversityHint: string = ''
+  diversityHint: string = '',
+  vocabCooldownHint: string = ''
 ): string {
   const styleGuide = getPhaseStyleGuide(style, 'A');
   const details = detailBank.length > 0
@@ -423,7 +425,7 @@ export function buildPhaseAPrompt(
   return `${PHASE_A_TEMPLATE.replace('{normal_rule}', normalRule)}
 ${details}
 ${styleGuide}
-${diversityHint}
+${diversityHint}${vocabCooldownHint}
 
 キーワード反映ルール（必須）：
 - キーワード「${word}」を本文中に必ず1回以上含めること
@@ -436,17 +438,19 @@ ${diversityHint}
 /**
  * Phase B用プロンプトを生成（続き書き専用）
  * @param keyword キーワード（主役化ルール用）
+ * @param vocabCooldownHint 語彙クールダウンのヒント（オプション）
  */
 export function buildPhaseBPrompt(
   anomaly: string,
   style: StoryStyle,
   previousText: string,
-  keyword: string
+  keyword: string,
+  vocabCooldownHint: string = ''
 ): string {
   const styleGuide = getPhaseStyleGuide(style, 'B');
 
   return `${PHASE_B_TEMPLATE.replace('{anomaly}', anomaly)}
-${styleGuide}
+${styleGuide}${vocabCooldownHint}
 
 対象キーワード: 「${keyword}」
 ※ このキーワードを怪異の核/トリガーとして扱うこと
@@ -470,13 +474,15 @@ ${previousText}
  * - "open": 不可逆点で止める（デフォルト）
  * - "partial_explanation": 1点だけ明かして止める
  * @param keyword キーワード（主役化ルール用）
+ * @param vocabCooldownHint 語彙クールダウンのヒント（オプション）
  */
 export function buildPhaseCPrompt(
   irreversiblePoint: string,
   style: StoryStyle,
   previousText: string,
   endingMode: EndingMode = 'open',
-  keyword: string = ''
+  keyword: string = '',
+  vocabCooldownHint: string = ''
 ): string {
   const styleGuide = getPhaseStyleGuide(style, 'C');
   const template = endingMode === 'partial_explanation'
@@ -488,7 +494,7 @@ export function buildPhaseCPrompt(
     : '';
 
   return `${template.replace('{irreversible_point}', irreversiblePoint)}
-${styleGuide}
+${styleGuide}${vocabCooldownHint}
 ${keywordHint}
 
 前段の文章（これに自然に続けて終わらせること）:

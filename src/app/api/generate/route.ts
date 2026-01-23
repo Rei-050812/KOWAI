@@ -21,7 +21,7 @@ import {
 import { getGenericBlueprint, isGenericBlueprint } from "@/lib/generic-blueprint";
 import { validatePhaseText, containsKeyword, validatePhaseCClimax, validateKeywordFocus, validatePhaseBOverlap, validateEventRepetition, validateActionConsistency } from "@/lib/validators";
 import { deduplicatePhases, DedupeLog } from "@/lib/dedupe";
-import { extractStoryMeta, StoryMeta, shouldTriggerDiversityGuard, buildDiversityAvoidanceHint } from "@/lib/diversity";
+import { extractStoryMeta, StoryMeta, shouldTriggerDiversityGuard, buildDiversityAvoidanceHint, buildVocabCooldownList, buildVocabCooldownHint } from "@/lib/diversity";
 
 // =============================================
 // 定数
@@ -98,6 +98,9 @@ interface ValidationStats {
   actionConsistencyIssueDetected: boolean;
   actionConsistencyRetryCount: number;
   actionConsistencyReason: 'incompatible_action' | 'abrupt_escape' | null;
+  // 語彙クールダウン（内部ログ用）
+  repeatedVocabDetected: boolean;
+  avoidedVocab: string[];
 }
 
 // =============================================
@@ -300,10 +303,22 @@ async function executeThreePhaseGeneration(
     actionConsistencyIssueDetected: false,
     actionConsistencyRetryCount: 0,
     actionConsistencyReason: null,
+    // 語彙クールダウン（内部ログ用）
+    repeatedVocabDetected: false,
+    avoidedVocab: [],
   };
 
   // 多様性ヒントを構築
   const diversityHint = buildDiversityAvoidanceHint(recentMetas);
+
+  // 語彙クールダウンリストを構築
+  const vocabCooldown = buildVocabCooldownList(recentMetas, 5);
+  const vocabCooldownHint = buildVocabCooldownHint(vocabCooldown.avoidList);
+  if (vocabCooldown.detected) {
+    stats.repeatedVocabDetected = true;
+    stats.avoidedVocab = vocabCooldown.avoidList;
+    console.log(`[VocabCooldown] Avoid list: ${vocabCooldown.avoidList.join(', ')}`);
+  }
 
   // Phase A: opening（キーワード必須）+ 多様性ガード
   // 対策1: Phase A は必ず「上書き」する（append/push/concat 禁止）
@@ -311,7 +326,7 @@ async function executeThreePhaseGeneration(
   let phaseAPrompt = '';
 
   for (let diversityAttempt = 0; diversityAttempt <= 1; diversityAttempt++) {
-    phaseAPrompt = buildPhaseAPrompt(bp.normal_rule, style, word, bp.detail_bank, diversityAttempt > 0 ? diversityHint : '');
+    phaseAPrompt = buildPhaseAPrompt(bp.normal_rule, style, word, bp.detail_bank, diversityAttempt > 0 ? diversityHint : '', vocabCooldownHint);
     console.log(`[Phase A] generating opening... (diversity attempt ${diversityAttempt + 1})`);
     const phaseAResult = await generatePhaseAWithRetry(phaseAPrompt, word);
     stats.retryCountPhaseA = phaseAResult.retryCount;
@@ -336,7 +351,7 @@ async function executeThreePhaseGeneration(
   }
 
   // Phase B: disturbance（続き書き専用 + 導入文被り/出来事再描写/行動整合性チェック）
-  const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word);
+  const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word, vocabCooldownHint);
   let phaseBText = '';
   const MAX_PHASE_B_VALIDATION_RETRY = 2;
 
@@ -402,7 +417,7 @@ async function executeThreePhaseGeneration(
   const MAX_PHASE_C_VALIDATION_RETRY = 2;
 
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_C_VALIDATION_RETRY; validationAttempt++) {
-    phaseCPrompt = buildPhaseCPrompt(bp.irreversible_point, style, combinedAB, endingMode, word);
+    phaseCPrompt = buildPhaseCPrompt(bp.irreversible_point, style, combinedAB, endingMode, word, vocabCooldownHint);
     console.log(`[Phase C] generating irreversible_point+climax (mode=${endingMode}, validation attempt ${validationAttempt + 1})...`);
     const phaseCResult = await generatePhaseWithRetry(phaseCPrompt, "Phase C");
     stats.retryCountPhaseC += phaseCResult.retryCount;
@@ -688,8 +703,9 @@ export async function POST(request: NextRequest) {
     const hasPhaseBOverlap = stats.phaseBOverlapDetected;
     const hasEventRepetition = stats.eventRepetitionDetected;
     const hasActionConsistencyIssue = stats.actionConsistencyIssueDetected;
+    const hasVocabCooldown = stats.repeatedVocabDetected;
 
-    if (hasRetries || hasGuards || hasKeywordIssue || hasPhaseBOverlap || hasEventRepetition || hasActionConsistencyIssue) {
+    if (hasRetries || hasGuards || hasKeywordIssue || hasPhaseBOverlap || hasEventRepetition || hasActionConsistencyIssue || hasVocabCooldown) {
       console.log(
         `[Stats] retries: A=${stats.retryCountPhaseA}, B=${stats.retryCountPhaseB}, C=${stats.retryCountPhaseC}, ` +
           `keywordMiss=${stats.keywordMissDetected}, incompleteQuote=${stats.incompleteQuoteDetected}, ` +
@@ -697,7 +713,8 @@ export async function POST(request: NextRequest) {
           `endingRetry=${stats.endingRetryCount}, keywordFocus=${stats.keywordFocusOk}(count=${stats.keywordFocusCount}), ` +
           `phaseBOverlap=${stats.phaseBOverlapDetected}(reason=${stats.phaseBOverlapReason}, retry=${stats.phaseBOverlapRetryCount}), ` +
           `eventRepetition=${stats.eventRepetitionDetected}(retry=${stats.eventRepetitionRetryCount}), ` +
-          `actionConsistency=${stats.actionConsistencyIssueDetected}(reason=${stats.actionConsistencyReason}, retry=${stats.actionConsistencyRetryCount})`
+          `actionConsistency=${stats.actionConsistencyIssueDetected}(reason=${stats.actionConsistencyReason}, retry=${stats.actionConsistencyRetryCount}), ` +
+          `vocabCooldown=${stats.repeatedVocabDetected}(avoided=[${stats.avoidedVocab.join(',')}])`
       );
     }
 

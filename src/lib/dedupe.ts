@@ -151,13 +151,40 @@ function isHeadDuplicate(textA: string, textB: string): boolean {
 // =============================================
 
 /**
- * Phase Bの先頭からPhase Aと重複する部分を除去
+ * Phase Bの先頭からPhase Aの先頭1文と重複する部分を除去
+ * 改良版：先頭1文の完全一致/高類似度を確実に検出して除去
  */
 function trimDuplicateHead(phaseA: string, phaseB: string): string {
+  const firstSentenceA = extractFirstSentence(phaseA);
+  const normalizedFirstA = normalizeForCompare(firstSentenceA);
+
+  // Phase Bを正規化
+  const normalizedB = normalizeForCompare(phaseB);
+
+  // 方法1: Phase B が Phase A の先頭1文で始まっている場合、その部分を除去
+  if (normalizedB.startsWith(normalizedFirstA)) {
+    // 先頭1文を除去
+    const remaining = phaseB.replace(new RegExp(`^[\\s\\n]*${escapeRegex(firstSentenceA)}[\\s\\n]*`, 's'), '');
+    console.log(`[Dedupe] Exact first sentence match removed: "${firstSentenceA.slice(0, 40)}..."`);
+    return remaining.trim();
+  }
+
+  // 方法2: 先頭1文が高類似度（90%以上）の場合
+  const firstSentenceB = extractFirstSentence(phaseB);
+  const normalizedFirstB = normalizeForCompare(firstSentenceB);
+
+  if (calculateSimilarity(normalizedFirstA, normalizedFirstB) >= FIRST_SENTENCE_MATCH_THRESHOLD) {
+    // Phase Bから先頭1文を除去
+    const sentencePattern = new RegExp(`^[^。！？]*[。！？]?[\\s\\n]*`, 's');
+    const remaining = phaseB.replace(sentencePattern, '');
+    console.log(`[Dedupe] Similar first sentence removed: "${firstSentenceB.slice(0, 40)}..."`);
+    return remaining.trim();
+  }
+
+  // 方法3: 行単位での類似度チェック（従来方式、フォールバック）
   const headA = extractHeadSentences(phaseA, 2);
   const normalizedHeadA = normalizeForCompare(headA);
 
-  // Phase Bの先頭からheadAを探して除去
   const lines = phaseB.split(/\n+/);
   let trimmedLines: string[] = [];
   let foundDuplicate = false;
@@ -171,6 +198,7 @@ function trimDuplicateHead(phaseA: string, phaseB: string): string {
       // 先頭行がPhase Aの先頭と類似していたらスキップ
       if (calculateSimilarity(normalizedLine, normalizedHeadA) >= SIMILARITY_THRESHOLD) {
         foundDuplicate = true;
+        console.log(`[Dedupe] Similar line removed: "${line.slice(0, 40)}..."`);
         continue; // この行をスキップ
       }
     }
@@ -178,12 +206,19 @@ function trimDuplicateHead(phaseA: string, phaseB: string): string {
     trimmedLines.push(lines[i]);
   }
 
-  // 重複が見つからなかった場合は元のテキストを返す
-  if (!foundDuplicate) {
-    return phaseB;
+  if (foundDuplicate) {
+    return trimmedLines.join('\n').trim();
   }
 
-  return trimmedLines.join('\n').trim();
+  // 重複が見つからなかった場合は元のテキストを返す
+  return phaseB;
+}
+
+/**
+ * 正規表現エスケープ
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // =============================================
