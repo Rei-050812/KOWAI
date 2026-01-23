@@ -595,3 +595,234 @@ export function validatePhaseBOverlap(
     details: '',
   };
 }
+
+// =============================================
+// 出来事再描写チェック
+// =============================================
+
+/**
+ * 動詞パターン（名詞+動詞の組み合わせを抽出）
+ */
+const EVENT_VERB_PATTERNS = [
+  // 電話関連
+  /電話[がを]?(?:鳴|掛か|かか|出|取)/,
+  /電話[がを]?(?:鳴った|掛かった|かかった|出た|取った)/,
+  // ドア・窓関連
+  /(?:ドア|扉|玄関)[がを]?(?:開|閉|叩|ノック)/,
+  /(?:ドア|扉|玄関)[がを]?(?:開いた|開けた|閉まった|閉じた|叩いた|ノックされた)/,
+  /窓[がを]?(?:開|閉|割|叩)/,
+  // 音関連
+  /(?:音|物音|足音)[がを]?(?:聞こえ|した|鳴)/,
+  /(?:チャイム|インターホン|ベル)[がを]?(?:鳴|押)/,
+  // 視覚関連
+  /(?:人|影|姿)[がを]?(?:見え|立っ|現れ|消え)/,
+  /(?:人|影|姿)[がを]?(?:見えた|立っていた|現れた|消えた)/,
+  // 車関連
+  /車[がを]?(?:停|止|走|出|動)/,
+  /エンジン[がを]?(?:かか|かけ|止|切)/,
+  // 移動関連
+  /(?:帰|戻|着|出発|出|入)/,
+  // 連絡関連
+  /(?:メール|LINE|メッセージ)[がを]?(?:来|届|送|受)/,
+];
+
+/**
+ * 特徴的な名詞を抽出
+ */
+function extractKeyNouns(text: string): string[] {
+  const nouns: string[] = [];
+
+  // 特徴的な名詞パターン
+  const nounPatterns = [
+    /電話/g, /ドア/g, /扉/g, /玄関/g, /窓/g,
+    /音/g, /物音/g, /足音/g, /声/g,
+    /チャイム/g, /インターホン/g, /ベル/g,
+    /人/g, /影/g, /姿/g, /顔/g,
+    /車/g, /エンジン/g,
+    /メール/g, /LINE/g, /メッセージ/g,
+    /部屋/g, /廊下/g, /階段/g,
+  ];
+
+  for (const pattern of nounPatterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      nouns.push(...matches);
+    }
+  }
+
+  return [...new Set(nouns)]; // 重複排除
+}
+
+/**
+ * イベントパターンを抽出
+ */
+function extractEventPatterns(text: string): string[] {
+  const events: string[] = [];
+
+  for (const pattern of EVENT_VERB_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) {
+      events.push(match[0]);
+    }
+  }
+
+  return events;
+}
+
+/**
+ * 出来事再描写チェック結果
+ */
+export interface EventRepetitionResult {
+  isValid: boolean;
+  repeatedEvents: string[];
+  details: string;
+}
+
+/**
+ * Phase B が Phase A の出来事を再描写していないかチェック
+ * @param phaseA Phase A のテキスト
+ * @param phaseB Phase B のテキスト
+ */
+export function validateEventRepetition(
+  phaseA: string,
+  phaseB: string
+): EventRepetitionResult {
+  // Phase A のイベントパターンを抽出
+  const eventsA = extractEventPatterns(phaseA);
+  // Phase B の先頭部分（最初の2-3文）のイベントパターンを抽出
+  const phaseBHead = extractFirstTwoSentences(phaseB);
+  const eventsB = extractEventPatterns(phaseBHead);
+
+  // 重複イベントを検出
+  const repeatedEvents = eventsA.filter(eventA =>
+    eventsB.some(eventB => {
+      // 完全一致または含む関係
+      return eventA === eventB ||
+             eventA.includes(eventB) ||
+             eventB.includes(eventA);
+    })
+  );
+
+  if (repeatedEvents.length > 0) {
+    return {
+      isValid: false,
+      repeatedEvents,
+      details: `Phase A の出来事が Phase B で再描写: ${repeatedEvents.join(', ')}`,
+    };
+  }
+
+  return {
+    isValid: true,
+    repeatedEvents: [],
+    details: '',
+  };
+}
+
+// =============================================
+// 行動整合性チェック
+// =============================================
+
+/**
+ * 同時に成立しない行動ペア
+ */
+const INCOMPATIBLE_ACTION_PAIRS: Array<[RegExp, RegExp, string]> = [
+  // 運転中に両手が必要な行為
+  [/運転|ハンドル|走(?:らせ|って)|車[をで]/, /双眼鏡|望遠鏡|カメラ[をで]覗/, '運転中に双眼鏡は使えない'],
+  [/運転|ハンドル|走(?:らせ|って)|車[をで]/, /スマホ[をで](?:操作|見|触)/, '運転中にスマホ操作'],
+  [/運転|ハンドル/, /目[をが](?:閉|つぶ|瞑)/, '運転中に目を閉じる'],
+  // 逃走中に不要な行動
+  [/逃|走|駆け/, /(?:ゆっくり|のんびり|落ち着いて)/, '逃走中にゆっくり'],
+  [/逃|走|駆け/, /食事|食べ/, '逃走中に食事'],
+  // 寝ている状態と行動
+  [/寝て|眠って|就寝/, /歩|走|動/, '寝ながら移動'],
+];
+
+/**
+ * 唐突な逃走・放棄を検出するパターン
+ */
+const ABRUPT_ESCAPE_PATTERNS = [
+  // 逃走・放棄の動作
+  /(?:車[をは])?(?:捨て|置い|放置し|乗り捨て)/,
+  /(?:家[をは])?(?:飛び出|逃げ出)/,
+  /(?:仕事[をは])?(?:放り出|投げ出)/,
+  /(?:そのまま|即座に|すぐに)(?:逃|走|帰|戻)/,
+];
+
+/**
+ * 危険・恐怖の前兆を示すパターン
+ */
+const DANGER_PRECEDING_PATTERNS = [
+  // 直接的な危険
+  /追(?:いかけ|ってき|われ)/,
+  /襲(?:いかか|ってき|われ)/,
+  /迫(?:ってき|られ)/,
+  /近づ(?:いてき|かれ)/,
+  // 恐怖の身体反応
+  /震え|鳥肌|冷や汗|心臓|息[がを](?:止|詰|切)/,
+  /動け(?:なく|ず)/,
+  /声[がを](?:出せ|失)/,
+  // 明確な怪異の顕在化
+  /(?:それ|あれ|何か)[がは](?:見えた|聞こえた|触れた)/,
+  /目[がと](?:合った|合う)/,
+  /(?:こちら|俺|私)[をに](?:見て|向いて)/,
+];
+
+/**
+ * 行動整合性チェック結果
+ */
+export interface ActionConsistencyResult {
+  isValid: boolean;
+  reason: 'incompatible_action' | 'abrupt_escape' | null;
+  details: string;
+}
+
+/**
+ * 行動の整合性をチェック
+ * @param text チェック対象テキスト
+ * @param previousText 前のフェーズのテキスト（オプション：逃走前兆チェック用）
+ */
+export function validateActionConsistency(
+  text: string,
+  previousText: string = ''
+): ActionConsistencyResult {
+  // 1. 同時に成立しない行動ペアのチェック
+  for (const [pattern1, pattern2, message] of INCOMPATIBLE_ACTION_PAIRS) {
+    // 同じ段落内で両方のパターンが出現するかチェック
+    const paragraphs = text.split(/\n\n+/);
+    for (const paragraph of paragraphs) {
+      if (pattern1.test(paragraph) && pattern2.test(paragraph)) {
+        return {
+          isValid: false,
+          reason: 'incompatible_action',
+          details: message,
+        };
+      }
+    }
+  }
+
+  // 2. 唐突な逃走・放棄のチェック
+  for (const escapePattern of ABRUPT_ESCAPE_PATTERNS) {
+    if (escapePattern.test(text)) {
+      // 前のテキストまたは同テキスト内に危険の前兆があるかチェック
+      const contextText = previousText + '\n' + text;
+      const hasDangerPreceding = DANGER_PRECEDING_PATTERNS.some(
+        dangerPattern => dangerPattern.test(contextText)
+      );
+
+      if (!hasDangerPreceding) {
+        const match = text.match(escapePattern);
+        return {
+          isValid: false,
+          reason: 'abrupt_escape',
+          details: `唐突な逃走・放棄: "${match?.[0] || '検出'}"（危険描写が不足）`,
+        };
+      }
+    }
+  }
+
+  return {
+    isValid: true,
+    reason: null,
+    details: '',
+  };
+}

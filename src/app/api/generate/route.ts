@@ -19,7 +19,7 @@ import {
   getRecentStoryMetas,
 } from "@/lib/supabase";
 import { getGenericBlueprint, isGenericBlueprint } from "@/lib/generic-blueprint";
-import { validatePhaseText, containsKeyword, validatePhaseCClimax, validateKeywordFocus, validatePhaseBOverlap } from "@/lib/validators";
+import { validatePhaseText, containsKeyword, validatePhaseCClimax, validateKeywordFocus, validatePhaseBOverlap, validateEventRepetition, validateActionConsistency } from "@/lib/validators";
 import { deduplicatePhases, DedupeLog } from "@/lib/dedupe";
 import { extractStoryMeta, StoryMeta, shouldTriggerDiversityGuard, buildDiversityAvoidanceHint } from "@/lib/diversity";
 
@@ -90,6 +90,14 @@ interface ValidationStats {
   phaseBOverlapDetected: boolean;
   phaseBOverlapRetryCount: number;
   phaseBOverlapReason: 'similar_to_phaseA' | 'intro_pattern' | null;
+  // 出来事再描写チェック（内部ログ用）
+  eventRepetitionDetected: boolean;
+  eventRepetitionRetryCount: number;
+  repeatedEvents: string[];
+  // 行動整合性チェック（内部ログ用）
+  actionConsistencyIssueDetected: boolean;
+  actionConsistencyRetryCount: number;
+  actionConsistencyReason: 'incompatible_action' | 'abrupt_escape' | null;
 }
 
 // =============================================
@@ -284,6 +292,14 @@ async function executeThreePhaseGeneration(
     phaseBOverlapDetected: false,
     phaseBOverlapRetryCount: 0,
     phaseBOverlapReason: null,
+    // 出来事再描写チェック（内部ログ用）
+    eventRepetitionDetected: false,
+    eventRepetitionRetryCount: 0,
+    repeatedEvents: [],
+    // 行動整合性チェック（内部ログ用）
+    actionConsistencyIssueDetected: false,
+    actionConsistencyRetryCount: 0,
+    actionConsistencyReason: null,
   };
 
   // 多様性ヒントを構築
@@ -319,13 +335,13 @@ async function executeThreePhaseGeneration(
     break; // 多様性OK or 再生成完了
   }
 
-  // Phase B: disturbance（続き書き専用 + 導入文被りチェック）
+  // Phase B: disturbance（続き書き専用 + 導入文被り/出来事再描写/行動整合性チェック）
   const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word);
   let phaseBText = '';
-  const MAX_PHASE_B_OVERLAP_RETRY = 2;
+  const MAX_PHASE_B_VALIDATION_RETRY = 2;
 
-  for (let overlapAttempt = 0; overlapAttempt <= MAX_PHASE_B_OVERLAP_RETRY; overlapAttempt++) {
-    console.log(`[Phase B] generating disturbance... (overlap check attempt ${overlapAttempt + 1})`);
+  for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_B_VALIDATION_RETRY; validationAttempt++) {
+    console.log(`[Phase B] generating disturbance... (validation attempt ${validationAttempt + 1})`);
     const phaseBResult = await generatePhaseWithRetry(phaseBPrompt, "Phase B");
     stats.retryCountPhaseB += phaseBResult.retryCount;
     if (phaseBResult.incompleteQuoteDetected) {
@@ -333,36 +349,61 @@ async function executeThreePhaseGeneration(
     }
     phaseBText = phaseBResult.text;
 
-    // 導入文被りチェック
-    const overlapCheck = validatePhaseBOverlap(phaseAText, phaseBText);
+    let shouldRetry = false;
 
-    if (overlapCheck.isValid) {
-      // OK: 被りなし
+    // 1. 導入文被りチェック
+    const overlapCheck = validatePhaseBOverlap(phaseAText, phaseBText);
+    if (!overlapCheck.isValid) {
+      stats.phaseBOverlapDetected = true;
+      stats.phaseBOverlapReason = overlapCheck.reason;
+      stats.phaseBOverlapRetryCount = validationAttempt + 1;
+      console.log(`[Phase B Overlap] ${overlapCheck.details}`);
+      console.log(`[Phase B Overlap Internal] phaseB_overlap_detected: true, phaseB_overlap_reason: ${overlapCheck.reason}, phaseB_overlap_retry_count: ${validationAttempt + 1}`);
+      shouldRetry = true;
+    }
+
+    // 2. 出来事再描写チェック
+    const eventCheck = validateEventRepetition(phaseAText, phaseBText);
+    if (!eventCheck.isValid) {
+      stats.eventRepetitionDetected = true;
+      stats.repeatedEvents = eventCheck.repeatedEvents;
+      stats.eventRepetitionRetryCount = validationAttempt + 1;
+      console.log(`[Phase B EventRepetition] ${eventCheck.details}`);
+      console.log(`[Phase B EventRepetition Internal] event_repetition_detected: true, repeated_events: [${eventCheck.repeatedEvents.join(', ')}], retry_count: ${validationAttempt + 1}`);
+      shouldRetry = true;
+    }
+
+    // 3. 行動整合性チェック（Phase A を前段として渡す）
+    const actionCheck = validateActionConsistency(phaseBText, phaseAText);
+    if (!actionCheck.isValid) {
+      stats.actionConsistencyIssueDetected = true;
+      stats.actionConsistencyReason = actionCheck.reason;
+      stats.actionConsistencyRetryCount = validationAttempt + 1;
+      console.log(`[Phase B ActionConsistency] ${actionCheck.details}`);
+      console.log(`[Phase B ActionConsistency Internal] action_consistency_issue: true, reason: ${actionCheck.reason}, retry_count: ${validationAttempt + 1}`);
+      shouldRetry = true;
+    }
+
+    if (!shouldRetry) {
+      // 全チェックOK
       break;
     }
 
-    // NG: 被り検出 → 再生成
-    stats.phaseBOverlapDetected = true;
-    stats.phaseBOverlapReason = overlapCheck.reason;
-    stats.phaseBOverlapRetryCount = overlapAttempt + 1;
-
-    console.log(`[Phase B Overlap] ${overlapCheck.details}`);
-    console.log(`[Phase B Overlap Internal] phaseB_overlap_detected: true, phaseB_overlap_reason: ${overlapCheck.reason}, phaseB_overlap_retry_count: ${overlapAttempt + 1}`);
-
-    if (overlapAttempt === MAX_PHASE_B_OVERLAP_RETRY) {
+    if (validationAttempt === MAX_PHASE_B_VALIDATION_RETRY) {
       // 最大リトライ到達、最後の結果を使用（後続のdedupeで救済）
-      console.log(`[Phase B Overlap] max retry reached, proceeding with current result`);
+      console.log(`[Phase B Validation] max retry reached, proceeding with current result`);
     }
   }
 
-  // Phase C: irreversible_point + climax チェック + キーワード主役化チェック
+  // Phase C: irreversible_point + climax チェック + 行動整合性チェック + キーワード主役化チェック
   const combinedAB = `${phaseAText}\n\n${phaseBText}`;
   let phaseCText = '';
   let phaseCPrompt = '';
+  const MAX_PHASE_C_VALIDATION_RETRY = 2;
 
-  for (let climaxAttempt = 0; climaxAttempt <= 1; climaxAttempt++) {
+  for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_C_VALIDATION_RETRY; validationAttempt++) {
     phaseCPrompt = buildPhaseCPrompt(bp.irreversible_point, style, combinedAB, endingMode, word);
-    console.log(`[Phase C] generating irreversible_point+climax (mode=${endingMode}, attempt ${climaxAttempt + 1})...`);
+    console.log(`[Phase C] generating irreversible_point+climax (mode=${endingMode}, validation attempt ${validationAttempt + 1})...`);
     const phaseCResult = await generatePhaseWithRetry(phaseCPrompt, "Phase C");
     stats.retryCountPhaseC += phaseCResult.retryCount;
     if (phaseCResult.incompleteQuoteDetected) {
@@ -370,18 +411,39 @@ async function executeThreePhaseGeneration(
     }
     phaseCText = phaseCResult.text;
 
-    // クライマックスチェック（初回のみ）
-    if (climaxAttempt === 0) {
-      const climaxValidation = validatePhaseCClimax(phaseCText);
-      if (!climaxValidation.isValid) {
-        console.log(`[Phase C] climax validation failed: ${climaxValidation.issues.join(', ')}, retrying`);
-        stats.endingPeakOk = false;
-        stats.endingRetryCount = 1;
-        continue; // 再生成
-      }
+    let shouldRetry = false;
+
+    // 1. クライマックスチェック
+    const climaxValidation = validatePhaseCClimax(phaseCText);
+    if (!climaxValidation.isValid) {
+      console.log(`[Phase C Climax] validation failed: ${climaxValidation.issues.join(', ')}`);
+      stats.endingPeakOk = false;
+      stats.endingRetryCount = validationAttempt + 1;
+      shouldRetry = true;
     }
-    stats.endingPeakOk = true;
-    break;
+
+    // 2. 行動整合性チェック（Phase A+B を前段として渡す）
+    const actionCheck = validateActionConsistency(phaseCText, combinedAB);
+    if (!actionCheck.isValid) {
+      // Phase C でも検出した場合は stats を上書き（Phase B で検出済みでなければ）
+      if (!stats.actionConsistencyIssueDetected) {
+        stats.actionConsistencyIssueDetected = true;
+        stats.actionConsistencyReason = actionCheck.reason;
+      }
+      stats.actionConsistencyRetryCount = Math.max(stats.actionConsistencyRetryCount, validationAttempt + 1);
+      console.log(`[Phase C ActionConsistency] ${actionCheck.details}`);
+      console.log(`[Phase C ActionConsistency Internal] action_consistency_issue: true, reason: ${actionCheck.reason}, retry_count: ${validationAttempt + 1}`);
+      shouldRetry = true;
+    }
+
+    if (!shouldRetry) {
+      stats.endingPeakOk = true;
+      break;
+    }
+
+    if (validationAttempt === MAX_PHASE_C_VALIDATION_RETRY) {
+      console.log(`[Phase C Validation] max retry reached, proceeding with current result`);
+    }
   }
 
   // キーワード主役化チェック（Phase B + C を結合して検証）
@@ -624,14 +686,18 @@ export async function POST(request: NextRequest) {
     const hasGuards = stats.diversityGuardTriggered || stats.dedupeApplied || stats.endingRetryCount > 0;
     const hasKeywordIssue = !stats.keywordFocusOk;
     const hasPhaseBOverlap = stats.phaseBOverlapDetected;
+    const hasEventRepetition = stats.eventRepetitionDetected;
+    const hasActionConsistencyIssue = stats.actionConsistencyIssueDetected;
 
-    if (hasRetries || hasGuards || hasKeywordIssue || hasPhaseBOverlap) {
+    if (hasRetries || hasGuards || hasKeywordIssue || hasPhaseBOverlap || hasEventRepetition || hasActionConsistencyIssue) {
       console.log(
         `[Stats] retries: A=${stats.retryCountPhaseA}, B=${stats.retryCountPhaseB}, C=${stats.retryCountPhaseC}, ` +
           `keywordMiss=${stats.keywordMissDetected}, incompleteQuote=${stats.incompleteQuoteDetected}, ` +
           `dedupe=${stats.dedupeApplied}, diversity=${stats.diversityGuardTriggered}, ` +
           `endingRetry=${stats.endingRetryCount}, keywordFocus=${stats.keywordFocusOk}(count=${stats.keywordFocusCount}), ` +
-          `phaseBOverlap=${stats.phaseBOverlapDetected}(reason=${stats.phaseBOverlapReason}, retry=${stats.phaseBOverlapRetryCount})`
+          `phaseBOverlap=${stats.phaseBOverlapDetected}(reason=${stats.phaseBOverlapReason}, retry=${stats.phaseBOverlapRetryCount}), ` +
+          `eventRepetition=${stats.eventRepetitionDetected}(retry=${stats.eventRepetitionRetryCount}), ` +
+          `actionConsistency=${stats.actionConsistencyIssueDetected}(reason=${stats.actionConsistencyReason}, retry=${stats.actionConsistencyRetryCount})`
       );
     }
 
