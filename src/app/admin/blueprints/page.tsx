@@ -29,30 +29,6 @@ const DEFAULT_BLUEPRINT: KaidanBlueprintData = {
 };
 
 
-// タグを自動生成
-function generateTags(blueprint: KaidanBlueprintData): string[] {
-  const tags: string[] = [];
-
-  // anomalyから抽出（最初の10文字程度をキーワードとして）
-  if (blueprint.anomaly) {
-    const anomalyWords = blueprint.anomaly.slice(0, 20).split(/[、。\s]+/).filter(w => w.length >= 2);
-    tags.push(...anomalyWords.slice(0, 3));
-  }
-
-  // allowed_subgenresから
-  if (blueprint.allowed_subgenres) {
-    tags.push(...blueprint.allowed_subgenres);
-  }
-
-  // detail_bankから主要なものを
-  if (blueprint.detail_bank) {
-    tags.push(...blueprint.detail_bank.slice(0, 3));
-  }
-
-  // 重複除去
-  return [...new Set(tags)];
-}
-
 export default function AdminBlueprintsPage() {
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
@@ -96,20 +72,17 @@ export default function AdminBlueprintsPage() {
         const blueprint = JSON.parse(storedBlueprint) as KaidanBlueprintData;
         setBlueprintJson(JSON.stringify(blueprint, null, 2));
 
-        // タグを読み込む（抽出済みタグがあればそれを使用、なければ自動生成）
+        // タグを読み込む（抽出済みタグがあればそれを使用）
         if (storedTags) {
           const parsedTags = JSON.parse(storedTags) as string[];
           setTags(parsedTags.join(", "));
-        } else {
-          const autoTags = generateTags(blueprint);
-          setTags(autoTags.join(", "));
         }
 
         // 読み込んだら削除
         sessionStorage.removeItem(BLUEPRINT_STORAGE_KEY);
         sessionStorage.removeItem(TAGS_STORAGE_KEY);
         setHasTempBlueprint(false);
-        setStatus({ type: "success", message: "一時Blueprintとタグを読み込みました" });
+        setStatus({ type: "success", message: "一時Blueprintを読み込みました" });
       }
     } catch {
       setStatus({ type: "error", message: "一時Blueprintの読み込みに失敗しました" });
@@ -157,17 +130,6 @@ export default function AdminBlueprintsPage() {
       setQualityScore(0); // パースエラー時は0点
     }
   }, [blueprintJson]);
-
-  const handleAutoGenerateTags = () => {
-    try {
-      const blueprint = JSON.parse(blueprintJson) as KaidanBlueprintData;
-      const autoTags = generateTags(blueprint);
-      setTags(autoTags.join(", "));
-      setStatus({ type: "success", message: `${autoTags.length}個のタグを自動生成しました` });
-    } catch {
-      setStatus({ type: "error", message: "JSONの形式が不正です" });
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,18 +236,9 @@ export default function AdminBlueprintsPage() {
 
           {/* タグ */}
           <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium">
-                タグ（カンマ区切り）
-              </label>
-              <button
-                type="button"
-                onClick={handleAutoGenerateTags}
-                className="text-xs px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded"
-              >
-                自動生成
-              </button>
-            </div>
+            <label className="block text-sm font-medium mb-2">
+              タグ（カンマ区切り）
+            </label>
             <input
               type="text"
               value={tags}

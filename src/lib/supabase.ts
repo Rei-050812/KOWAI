@@ -7,6 +7,8 @@ import {
   WordCount,
   KaidanBlueprintData,
   BlueprintSearchResult,
+  GenerationConfig,
+  FallbackReason,
 } from "@/types";
 
 let supabase: SupabaseClient | null = null;
@@ -51,7 +53,8 @@ export async function createStory(
   title: string,
   hook: string,
   story: string,
-  blueprintId: number | null = null
+  blueprintId: number | null = null,
+  storyMeta: StoredStoryMeta | null = null
 ): Promise<Story> {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -65,6 +68,7 @@ export async function createStory(
       likes: 0,
       views: 0,
       blueprint_id: blueprintId,
+      story_meta: storyMeta,
     })
     .select()
     .single();
@@ -638,4 +642,163 @@ export async function updateBlueprint(
     console.error("Error updating blueprint:", error);
     throw new Error("Blueprintの更新に失敗しました");
   }
+}
+
+// =============================================
+// 3フェーズ生成ログ
+// =============================================
+
+/**
+ * 3フェーズ生成ログの入力データ
+ */
+export interface SaveGenerationLogInput {
+  storyId: string;
+  blueprintId: number;
+  blueprintTitle: string;
+  blueprintQualityScore: number;
+  fallbackUsed: boolean;
+  fallbackReason: FallbackReason;
+  generationConfig: GenerationConfig;
+  phaseAPrompt: string;
+  phaseAText: string;
+  phaseBPrompt: string;
+  phaseBText: string;
+  phaseCPrompt: string;
+  phaseCText: string;
+  finalStory: string;
+  // バリデーション統計
+  retryCountPhaseA: number;
+  retryCountPhaseB: number;
+  retryCountPhaseC: number;
+  keywordMissDetected: boolean;
+  incompleteQuoteDetected: boolean;
+  // 重複除去ログ
+  dedupeApplied: boolean;
+  dedupeTarget: 'A-B' | 'B-C' | null;
+  dedupeMethod: 'trim_head' | null;
+  // 多様性ガードログ
+  diversityGuardTriggered: boolean;
+  diversityGuardReason: string | null;
+  diversityRetryCount: number;
+  // Phase C クライマックスチェック
+  endingPeakOk: boolean;
+  endingRetryCount: number;
+  // キーワード主役化チェック
+  keywordFocusOk: boolean;
+  keywordFocusCount: number;
+  keywordFocusRetryCount: number;
+}
+
+/**
+ * 3フェーズ生成ログを保存
+ */
+export async function saveGenerationLog(input: SaveGenerationLogInput): Promise<void> {
+  const client = getSupabaseClient();
+
+  const { error } = await client.from("generation_logs").insert({
+    story_id: input.storyId,
+    used_blueprint_id: input.blueprintId,
+    used_blueprint_title: input.blueprintTitle,
+    used_blueprint_quality_score: input.blueprintQualityScore,
+    fallback_used: input.fallbackUsed,
+    fallback_reason: input.fallbackReason,
+    generation_config: input.generationConfig,
+    phase_a_prompt: input.phaseAPrompt,
+    phase_a_text: input.phaseAText,
+    phase_b_prompt: input.phaseBPrompt,
+    phase_b_text: input.phaseBText,
+    phase_c_prompt: input.phaseCPrompt,
+    phase_c_text: input.phaseCText,
+    final_story: input.finalStory,
+    // バリデーション統計
+    retry_count_phase_a: input.retryCountPhaseA,
+    retry_count_phase_b: input.retryCountPhaseB,
+    retry_count_phase_c: input.retryCountPhaseC,
+    keyword_miss_detected: input.keywordMissDetected,
+    incomplete_quote_detected: input.incompleteQuoteDetected,
+    // 重複除去ログ
+    dedupe_applied: input.dedupeApplied,
+    dedupe_target: input.dedupeTarget,
+    dedupe_method: input.dedupeMethod,
+    // 多様性ガードログ
+    diversity_guard_triggered: input.diversityGuardTriggered,
+    diversity_guard_reason: input.diversityGuardReason,
+    diversity_retry_count: input.diversityRetryCount,
+    // Phase C クライマックスチェック
+    ending_peak_ok: input.endingPeakOk,
+    ending_retry_count: input.endingRetryCount,
+    // キーワード主役化チェック
+    keyword_focus_ok: input.keywordFocusOk,
+    keyword_focus_count: input.keywordFocusCount,
+    keyword_focus_retry_count: input.keywordFocusRetryCount,
+  });
+
+  if (error) {
+    console.error("Error saving generation log:", error);
+    // ログ保存失敗は怪談生成には影響させない
+  }
+}
+
+// =============================================
+// フォールバック用Blueprint検索
+// =============================================
+
+/**
+ * 緩い条件でBlueprintを検索（near フォールバック用）
+ * min_qualityを下げて再検索
+ */
+export async function matchBlueprintsLoose(
+  keyword: string,
+  minQuality: number = 30
+): Promise<BlueprintSearchResult[]> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client.rpc("match_blueprints_by_keyword", {
+    search_keyword: keyword,
+    match_count: 1,
+    min_quality: minQuality,
+  });
+
+  if (error) {
+    console.error("Error matching blueprints (loose):", error);
+    return [];
+  }
+
+  return (data || []).map((item: { id: number; title: string; blueprint: KaidanBlueprintData; tags: string[]; quality_score: number; match_score: number }) => ({
+    ...item,
+    similarity: item.match_score / 15,
+  })) as BlueprintSearchResult[];
+}
+
+// =============================================
+// 多様性ガード用：直近のストーリーメタ取得
+// =============================================
+
+export interface StoredStoryMeta {
+  setting: string;
+  cast: string;
+  flow: string;
+}
+
+/**
+ * 直近N件のストーリーメタを取得
+ */
+export async function getRecentStoryMetas(limit: number = 3): Promise<StoredStoryMeta[]> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client
+    .from("stories")
+    .select("story_meta")
+    .not("story_meta", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("Error fetching recent story metas:", error);
+    return [];
+  }
+
+  return (data || [])
+    .map((row: { story_meta: StoredStoryMeta | null }) => row.story_meta)
+    .filter((meta): meta is StoredStoryMeta => meta !== null);
 }

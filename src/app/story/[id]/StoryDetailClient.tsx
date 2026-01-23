@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Story } from "@/types";
 import { useTypingEffect } from "@/hooks/useTypingEffect";
@@ -14,6 +14,21 @@ interface StoryDetailClientProps {
 // タイピング速度（ミリ秒/文字）
 const TYPING_SPEED = 40;
 
+// フェーズ区切り位置を検出（改行2つで区切る）
+function detectPhaseBreaks(text: string): { phaseB: number; phaseC: number } {
+  const parts = text.split(/\n\n+/);
+  if (parts.length < 3) {
+    return { phaseB: Math.floor(text.length * 0.33), phaseC: Math.floor(text.length * 0.66) };
+  }
+
+  // Phase A終了位置
+  const phaseB = parts[0].length + 2;
+  // Phase B終了位置
+  const phaseC = parts[0].length + 2 + parts[1].length + 2;
+
+  return { phaseB, phaseC };
+}
+
 export default function StoryDetailClient({ story, shareCount = 0 }: StoryDetailClientProps) {
   const router = useRouter();
   const [likes, setLikes] = useState(story.likes);
@@ -22,10 +37,14 @@ export default function StoryDetailClient({ story, shareCount = 0 }: StoryDetail
 
   // hook + story を結合してタイピング
   const fullText = `${story.hook}\n\n${story.story}`;
-  const { displayedText, isComplete, isTyping, skip } = useTypingEffect(fullText, {
+  const { displayedText, isComplete, isTyping, skip, progress } = useTypingEffect(fullText, {
     speed: TYPING_SPEED,
     startDelay: 800,
   });
+
+  // フェーズ区切り位置（メモ化）- 将来の段階スキップ用
+  const _phaseBreaks = useMemo(() => detectPhaseBreaks(fullText), [fullText]);
+  void _phaseBreaks; // unused for now
 
   const handleLike = async () => {
     if (hasLiked || isLiking) return;
@@ -67,12 +86,21 @@ export default function StoryDetailClient({ story, shareCount = 0 }: StoryDetail
           {isTyping && <span className="typing-cursor" />}
         </div>
 
-        {/* スキップボタン（タイピング中のみ表示） */}
+        {/* スキップボタン - 固定位置（タイピング中のみ表示） */}
         {isTyping && (
-          <div className="text-center mb-12">
+          <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+            {/* 進捗バー */}
+            <div className="w-24 h-1 bg-horror-blood/30 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-horror-crimson/70 transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            {/* スキップボタン */}
             <button
               onClick={skip}
-              className="text-horror-text-secondary hover:text-horror-text text-sm transition-colors tracking-wider"
+              className="px-5 py-3 bg-horror-bg/90 backdrop-blur-sm border border-horror-blood/50 rounded-md text-horror-text-secondary hover:text-horror-text hover:border-horror-crimson text-sm transition-all duration-300 tracking-wider shadow-lg"
+              style={{ boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)' }}
             >
               スキップ →
             </button>

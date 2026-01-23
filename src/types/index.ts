@@ -68,6 +68,9 @@ export interface BlueprintConstraints {
   daily_details_min: number;     // 日常ディテール最低数
 }
 
+// ending_mode: 落ちの強化オプション
+export type EndingMode = 'open' | 'partial_explanation';
+
 // Blueprint本体（JSON構造）
 export interface KaidanBlueprintData {
   anomaly: string;                        // 怪異の核（1つだけ）
@@ -79,6 +82,7 @@ export interface KaidanBlueprintData {
   allowed_subgenres: string[];            // 許可サブジャンル
   detail_bank: string[];                  // 日常ディテールバンク
   ending_style: string;                   // 結末スタイル
+  ending_mode?: EndingMode;               // 落ち強化オプション（optional）
 }
 
 // DBに保存されるBlueprint
@@ -133,4 +137,55 @@ export interface SearchBlueprintRequest {
   query: string;
   match_count?: number;
   min_quality?: number;
+}
+
+// =============================================
+// 3フェーズ生成 型定義
+// =============================================
+
+// 生成フェーズ
+export type GenerationPhase = 'opening' | 'disturbance' | 'irreversible_point';
+
+// 各フェーズの生成結果
+export interface PhaseResult {
+  phase: GenerationPhase;
+  prompt: string;
+  generated_text: string;
+}
+
+// 3フェーズ生成の設定
+export interface GenerationConfig {
+  topK: number;
+  minQuality: number;
+  model: string;
+}
+
+// フォールバック理由
+export type FallbackReason = 'hit' | 'near' | 'generic';
+
+// Blueprint選択結果（フォールバック情報含む）
+export interface BlueprintSelectionResult {
+  blueprint: BlueprintSearchResult;
+  fallbackUsed: boolean;
+  fallbackReason: FallbackReason;
+}
+
+// 生成ログ
+export interface GenerationLog {
+  id: string;
+  story_id: string;
+  used_blueprint_id: number;
+  used_blueprint_title: string;
+  used_blueprint_quality_score: number;
+  fallback_used: boolean;
+  fallback_reason: FallbackReason;
+  generation_config: GenerationConfig;
+  phase_a_prompt: string;
+  phase_a_text: string;
+  phase_b_prompt: string;
+  phase_b_text: string;
+  phase_c_prompt: string;
+  phase_c_text: string;
+  final_story: string;
+  created_at: string;
 }
