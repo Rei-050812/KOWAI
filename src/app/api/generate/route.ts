@@ -282,6 +282,7 @@ async function executeThreePhaseGeneration(
   const diversityHint = buildDiversityAvoidanceHint(recentMetas);
 
   // Phase A: opening（キーワード必須）+ 多様性ガード
+  // 対策1: Phase A は必ず「上書き」する（append/push/concat 禁止）
   let phaseAText = '';
   let phaseAPrompt = '';
 
@@ -291,6 +292,7 @@ async function executeThreePhaseGeneration(
     const phaseAResult = await generatePhaseAWithRetry(phaseAPrompt, word);
     stats.retryCountPhaseA = phaseAResult.retryCount;
     stats.keywordMissDetected = phaseAResult.keywordMiss;
+    // 対策1: 常に上書き（phaseAText = newText）
     phaseAText = phaseAResult.text;
 
     // 多様性チェック（初回のみ）
@@ -363,7 +365,9 @@ async function executeThreePhaseGeneration(
     // 将来的にリトライが必要な場合はここに追加
   }
 
-  // 重複除去を適用して最終連結
+  // 対策3: 結合前に冒頭重複ガードを入れる（保険）
+  // - phaseA と phaseB の先頭1文が実質同一なら phaseB の冒頭文を削除
+  // - 同様に phaseB / phaseC もチェック
   const { a: dedupeA, b: dedupeB, c: dedupeC, log: dedupeLog } = deduplicatePhases(
     phaseAText,
     phaseBResult.text,
@@ -379,7 +383,8 @@ async function executeThreePhaseGeneration(
     console.log(`[Dedupe] applied: target=${dedupeLog.dedupeTarget}, method=${dedupeLog.dedupeMethod}`);
   }
 
-  // 最終連結
+  // 対策2: 最終結合は固定形式のみ許可（配列結合・ループ結合は禁止）
+  // final = A + "\n\n" + B + "\n\n" + C
   const finalStory = `${dedupeA.trim()}\n\n${dedupeB.trim()}\n\n${dedupeC.trim()}`;
 
   // ストーリーメタを抽出（多様性ガード用に保存）

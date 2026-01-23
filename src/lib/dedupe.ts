@@ -1,6 +1,11 @@
 /**
  * テキスト重複除去ユーティリティ
  * Phase A/B/C の結合時に冒頭文が連続する問題を防ぐ
+ *
+ * 対策：
+ * 1. Phase A は必ず「上書き」（route.ts側で保証）
+ * 2. 最終結合は固定形式のみ: A + "\n\n" + B + "\n\n" + C
+ * 3. 結合前に冒頭重複ガード（先頭1文の実質同一チェック）
  */
 
 // =============================================
@@ -11,7 +16,10 @@
 const HEAD_COMPARE_LENGTH = 100;
 
 /** 類似度の閾値（これ以上で重複と判定） */
-const SIMILARITY_THRESHOLD = 0.85;
+const SIMILARITY_THRESHOLD = 0.80;
+
+/** 先頭1文の最小一致率（これ以上で実質同一と判定） */
+const FIRST_SENTENCE_MATCH_THRESHOLD = 0.90;
 
 // =============================================
 // 型定義
@@ -57,6 +65,16 @@ function extractHeadSentences(text: string, count: number = 2): string {
   return sentences.slice(0, count).join('').trim();
 }
 
+/**
+ * 先頭1文のみを抽出
+ */
+function extractFirstSentence(text: string): string {
+  const normalized = normalizeForCompare(text);
+  // 句点、感嘆符、疑問符で区切る
+  const match = normalized.match(/^[^。！？]+[。！？]?/);
+  return match ? match[0].trim() : normalized.slice(0, 50).trim();
+}
+
 // =============================================
 // 類似度計算
 // =============================================
@@ -83,16 +101,43 @@ function calculateSimilarity(textA: string, textB: string): number {
 }
 
 /**
+ * 先頭1文が実質同一かチェック（厳密）
+ */
+function isFirstSentenceSame(textA: string, textB: string): boolean {
+  const firstA = extractFirstSentence(textA);
+  const firstB = extractFirstSentence(textB);
+
+  if (firstA.length === 0 || firstB.length === 0) return false;
+
+  // 完全一致
+  if (firstA === firstB) return true;
+
+  // 片方が片方を含む（先頭から）
+  if (firstA.startsWith(firstB) || firstB.startsWith(firstA)) return true;
+
+  // 高い類似度（90%以上）
+  return calculateSimilarity(firstA, firstB) >= FIRST_SENTENCE_MATCH_THRESHOLD;
+}
+
+/**
  * 先頭文が重複しているかチェック
+ * - 先頭1文の実質同一チェック（優先）
+ * - 先頭2文の類似度チェック（補助）
  */
 function isHeadDuplicate(textA: string, textB: string): boolean {
+  // 1. 先頭1文の実質同一チェック（厳密）
+  if (isFirstSentenceSame(textA, textB)) {
+    return true;
+  }
+
+  // 2. 先頭2文の類似度チェック（補助）
   const headA = extractHeadSentences(textA, 2);
   const headB = extractHeadSentences(textB, 2);
 
-  // 先頭文が完全に含まれているか
   const normalizedA = normalizeForCompare(headA);
   const normalizedB = normalizeForCompare(headB);
 
+  // 先頭文が完全に含まれているか
   if (normalizedB.startsWith(normalizedA) || normalizedA.startsWith(normalizedB)) {
     return true;
   }
@@ -148,6 +193,10 @@ function trimDuplicateHead(phaseA: string, phaseB: string): string {
 /**
  * 3フェーズテキストの重複を検出・除去
  *
+ * 対策3: 結合前に冒頭重複ガードを入れる（保険）
+ * - phaseA と phaseB の先頭1文が実質同一なら phaseB の冒頭文を削除
+ * - 同様に phaseB / phaseC もチェック
+ *
  * @param phaseA Phase Aのテキスト
  * @param phaseB Phase Bのテキスト
  * @param phaseC Phase Cのテキスト
@@ -168,25 +217,51 @@ export function deduplicatePhases(
     dedupeMethod: null,
   };
 
-  // A-B間の重複チェック
+  // 内部ログ用
+  let opening_deduped = false;
+  let opening_deduped_target: 'A-B' | 'B-C' | null = null;
+
+  // A-B間の重複チェック（先頭1文の実質同一をチェック）
   if (isHeadDuplicate(phaseA, phaseB)) {
-    console.log('[Dedupe] A-B duplicate detected, trimming B head');
+    const firstA = extractFirstSentence(phaseA);
+    const firstB = extractFirstSentence(phaseB);
+    console.log(`[Dedupe] A-B duplicate detected`);
+    console.log(`  First sentence A: "${firstA.slice(0, 50)}..."`);
+    console.log(`  First sentence B: "${firstB.slice(0, 50)}..."`);
+
     resultB = trimDuplicateHead(phaseA, phaseB);
     log.dedupeApplied = true;
     log.dedupeTarget = 'A-B';
     log.dedupeMethod = 'trim_head';
+
+    opening_deduped = true;
+    opening_deduped_target = 'A-B';
   }
 
   // B-C間の重複チェック（A-Bで処理した後のBを使う）
   if (isHeadDuplicate(resultB, phaseC)) {
-    console.log('[Dedupe] B-C duplicate detected, trimming C head');
+    const firstB = extractFirstSentence(resultB);
+    const firstC = extractFirstSentence(phaseC);
+    console.log(`[Dedupe] B-C duplicate detected`);
+    console.log(`  First sentence B: "${firstB.slice(0, 50)}..."`);
+    console.log(`  First sentence C: "${firstC.slice(0, 50)}..."`);
+
     resultC = trimDuplicateHead(resultB, phaseC);
-    // 既にA-Bで検出済みの場合はB-Cに上書きしない
+
+    // 既にA-Bで検出済みの場合はB-Cに上書きしない（DBログ用）
     if (!log.dedupeApplied) {
       log.dedupeApplied = true;
       log.dedupeTarget = 'B-C';
       log.dedupeMethod = 'trim_head';
     }
+
+    opening_deduped = true;
+    opening_deduped_target = opening_deduped_target || 'B-C';
+  }
+
+  // 内部ログ出力
+  if (opening_deduped) {
+    console.log(`[Dedupe Internal] opening_deduped: ${opening_deduped}, opening_deduped_target: ${opening_deduped_target}`);
   }
 
   return {
