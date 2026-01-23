@@ -19,7 +19,7 @@ import {
   getRecentStoryMetas,
 } from "@/lib/supabase";
 import { getGenericBlueprint, isGenericBlueprint } from "@/lib/generic-blueprint";
-import { validatePhaseText, containsKeyword, validatePhaseCClimax, validateKeywordFocus } from "@/lib/validators";
+import { validatePhaseText, containsKeyword, validatePhaseCClimax, validateKeywordFocus, validatePhaseBOverlap } from "@/lib/validators";
 import { deduplicatePhases, DedupeLog } from "@/lib/dedupe";
 import { extractStoryMeta, StoryMeta, shouldTriggerDiversityGuard, buildDiversityAvoidanceHint } from "@/lib/diversity";
 
@@ -86,6 +86,10 @@ interface ValidationStats {
   keywordFocusOk: boolean;
   keywordFocusCount: number;
   keywordFocusRetryCount: number;
+  // Phase B 導入文被りチェック（内部ログ用）
+  phaseBOverlapDetected: boolean;
+  phaseBOverlapRetryCount: number;
+  phaseBOverlapReason: 'similar_to_phaseA' | 'intro_pattern' | null;
 }
 
 // =============================================
@@ -276,6 +280,10 @@ async function executeThreePhaseGeneration(
     keywordFocusOk: true,
     keywordFocusCount: 0,
     keywordFocusRetryCount: 0,
+    // Phase B 導入文被りチェック（内部ログ用）
+    phaseBOverlapDetected: false,
+    phaseBOverlapRetryCount: 0,
+    phaseBOverlapReason: null,
   };
 
   // 多様性ヒントを構築
@@ -311,17 +319,44 @@ async function executeThreePhaseGeneration(
     break; // 多様性OK or 再生成完了
   }
 
-  // Phase B: disturbance
+  // Phase B: disturbance（続き書き専用 + 導入文被りチェック）
   const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word);
-  console.log("[Phase B] generating disturbance...");
-  const phaseBResult = await generatePhaseWithRetry(phaseBPrompt, "Phase B");
-  stats.retryCountPhaseB = phaseBResult.retryCount;
-  if (phaseBResult.incompleteQuoteDetected) {
-    stats.incompleteQuoteDetected = true;
+  let phaseBText = '';
+  const MAX_PHASE_B_OVERLAP_RETRY = 2;
+
+  for (let overlapAttempt = 0; overlapAttempt <= MAX_PHASE_B_OVERLAP_RETRY; overlapAttempt++) {
+    console.log(`[Phase B] generating disturbance... (overlap check attempt ${overlapAttempt + 1})`);
+    const phaseBResult = await generatePhaseWithRetry(phaseBPrompt, "Phase B");
+    stats.retryCountPhaseB += phaseBResult.retryCount;
+    if (phaseBResult.incompleteQuoteDetected) {
+      stats.incompleteQuoteDetected = true;
+    }
+    phaseBText = phaseBResult.text;
+
+    // 導入文被りチェック
+    const overlapCheck = validatePhaseBOverlap(phaseAText, phaseBText);
+
+    if (overlapCheck.isValid) {
+      // OK: 被りなし
+      break;
+    }
+
+    // NG: 被り検出 → 再生成
+    stats.phaseBOverlapDetected = true;
+    stats.phaseBOverlapReason = overlapCheck.reason;
+    stats.phaseBOverlapRetryCount = overlapAttempt + 1;
+
+    console.log(`[Phase B Overlap] ${overlapCheck.details}`);
+    console.log(`[Phase B Overlap Internal] phaseB_overlap_detected: true, phaseB_overlap_reason: ${overlapCheck.reason}, phaseB_overlap_retry_count: ${overlapAttempt + 1}`);
+
+    if (overlapAttempt === MAX_PHASE_B_OVERLAP_RETRY) {
+      // 最大リトライ到達、最後の結果を使用（後続のdedupeで救済）
+      console.log(`[Phase B Overlap] max retry reached, proceeding with current result`);
+    }
   }
 
   // Phase C: irreversible_point + climax チェック + キーワード主役化チェック
-  const combinedAB = `${phaseAText}\n\n${phaseBResult.text}`;
+  const combinedAB = `${phaseAText}\n\n${phaseBText}`;
   let phaseCText = '';
   let phaseCPrompt = '';
 
@@ -350,7 +385,7 @@ async function executeThreePhaseGeneration(
   }
 
   // キーワード主役化チェック（Phase B + C を結合して検証）
-  const combinedBC = `${phaseBResult.text}\n\n${phaseCText}`;
+  const combinedBC = `${phaseBText}\n\n${phaseCText}`;
   const keywordFocusResult = validateKeywordFocus(combinedBC, word, 2);
   stats.keywordFocusOk = keywordFocusResult.isValid;
   stats.keywordFocusCount = keywordFocusResult.keywordCount;
@@ -370,7 +405,7 @@ async function executeThreePhaseGeneration(
   // - 同様に phaseB / phaseC もチェック
   const { a: dedupeA, b: dedupeB, c: dedupeC, log: dedupeLog } = deduplicatePhases(
     phaseAText,
-    phaseBResult.text,
+    phaseBText,
     phaseCText
   );
 
@@ -588,13 +623,15 @@ export async function POST(request: NextRequest) {
     const hasRetries = stats.retryCountPhaseA > 0 || stats.retryCountPhaseB > 0 || stats.retryCountPhaseC > 0;
     const hasGuards = stats.diversityGuardTriggered || stats.dedupeApplied || stats.endingRetryCount > 0;
     const hasKeywordIssue = !stats.keywordFocusOk;
+    const hasPhaseBOverlap = stats.phaseBOverlapDetected;
 
-    if (hasRetries || hasGuards || hasKeywordIssue) {
+    if (hasRetries || hasGuards || hasKeywordIssue || hasPhaseBOverlap) {
       console.log(
         `[Stats] retries: A=${stats.retryCountPhaseA}, B=${stats.retryCountPhaseB}, C=${stats.retryCountPhaseC}, ` +
           `keywordMiss=${stats.keywordMissDetected}, incompleteQuote=${stats.incompleteQuoteDetected}, ` +
           `dedupe=${stats.dedupeApplied}, diversity=${stats.diversityGuardTriggered}, ` +
-          `endingRetry=${stats.endingRetryCount}, keywordFocus=${stats.keywordFocusOk}(count=${stats.keywordFocusCount})`
+          `endingRetry=${stats.endingRetryCount}, keywordFocus=${stats.keywordFocusOk}(count=${stats.keywordFocusCount}), ` +
+          `phaseBOverlap=${stats.phaseBOverlapDetected}(reason=${stats.phaseBOverlapReason}, retry=${stats.phaseBOverlapRetryCount})`
       );
     }
 

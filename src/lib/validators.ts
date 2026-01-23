@@ -442,3 +442,156 @@ export function validateOnomatopoeia(
     isExcessive,
   };
 }
+
+// =============================================
+// Phase B 導入文被りチェック
+// =============================================
+
+/**
+ * 導入文型パターン（Phase B 冒頭に出現したらNG）
+ */
+const INTRO_PATTERNS = [
+  /^俺[がはも]/,
+  /^私[がはも]/,
+  /^僕[がはも]/,
+  /^私たち[がはも]/,
+  /^俺たち[がはも]/,
+  /^彼[がはも]/,
+  /^彼女[がはも]/,
+  /^[A-Z][さんくんちゃん]?[がはも]/,
+  /^会社[でのはが]/,
+  /^大学[でのはが]/,
+  /^学校[でのはが]/,
+  /^職場[でのはが]/,
+  /^バイト先[でのはが]/,
+  /^勤め/,
+  /^働いて/,
+  /^通って/,
+  /^住んで/,
+  /^暮らして/,
+  /^旅行[でに]/,
+  /^出張[でに]/,
+  /^帰省[でに]/,
+];
+
+/**
+ * テキストを正規化（比較用）
+ */
+function normalizeText(text: string): string {
+  return text
+    .replace(/[\r\n]+/g, '')
+    .replace(/[\s\u3000]+/g, ' ')
+    .trim();
+}
+
+/**
+ * 先頭1文を抽出
+ */
+function extractFirstSentenceForCheck(text: string): string {
+  const normalized = normalizeText(text);
+  const match = normalized.match(/^[^。！？]+[。！？]?/);
+  return match ? match[0].trim() : normalized.slice(0, 80).trim();
+}
+
+/**
+ * 先頭2文を抽出
+ */
+function extractFirstTwoSentences(text: string): string {
+  const normalized = normalizeText(text);
+  const sentences = normalized.split(/(?<=[。！？])/);
+  return sentences.slice(0, 2).join('').trim();
+}
+
+/**
+ * 2つのテキストの類似度を計算（0-1）
+ */
+function calculateTextSimilarity(textA: string, textB: string): number {
+  const a = normalizeText(textA).slice(0, 100);
+  const b = normalizeText(textB).slice(0, 100);
+
+  if (a.length === 0 || b.length === 0) return 0;
+
+  const minLen = Math.min(a.length, b.length);
+  let matchCount = 0;
+
+  for (let i = 0; i < minLen; i++) {
+    if (a[i] === b[i]) matchCount++;
+  }
+
+  return matchCount / minLen;
+}
+
+/**
+ * Phase B が導入文型で始まっているかチェック
+ */
+function startsWithIntroPattern(text: string): boolean {
+  const firstSentence = extractFirstSentenceForCheck(text);
+  return INTRO_PATTERNS.some(pattern => pattern.test(firstSentence));
+}
+
+/**
+ * Phase A と Phase B の先頭が類似しているかチェック
+ */
+function isSimilarToPhaseA(phaseA: string, phaseB: string): boolean {
+  const headA = extractFirstTwoSentences(phaseA);
+  const headB = extractFirstTwoSentences(phaseB);
+
+  // 先頭1文の完全一致チェック
+  const firstA = extractFirstSentenceForCheck(phaseA);
+  const firstB = extractFirstSentenceForCheck(phaseB);
+
+  if (firstA === firstB) return true;
+
+  // 片方が片方を含む
+  if (firstA.startsWith(firstB) || firstB.startsWith(firstA)) return true;
+
+  // 類似度チェック（70%以上で類似と判定）
+  const similarity = calculateTextSimilarity(headA, headB);
+  return similarity >= 0.70;
+}
+
+/**
+ * Phase B 重複チェック結果
+ */
+export interface PhaseBOverlapResult {
+  isValid: boolean;
+  reason: 'similar_to_phaseA' | 'intro_pattern' | null;
+  details: string;
+}
+
+/**
+ * Phase B の導入文被りをチェック
+ * @param phaseA Phase A のテキスト
+ * @param phaseB Phase B のテキスト
+ * @returns 重複チェック結果
+ */
+export function validatePhaseBOverlap(
+  phaseA: string,
+  phaseB: string
+): PhaseBOverlapResult {
+  // 1. Phase A との類似度チェック
+  if (isSimilarToPhaseA(phaseA, phaseB)) {
+    const firstB = extractFirstSentenceForCheck(phaseB);
+    return {
+      isValid: false,
+      reason: 'similar_to_phaseA',
+      details: `Phase B 冒頭が Phase A と類似: "${firstB.slice(0, 30)}..."`,
+    };
+  }
+
+  // 2. 導入文型パターンチェック
+  if (startsWithIntroPattern(phaseB)) {
+    const firstB = extractFirstSentenceForCheck(phaseB);
+    return {
+      isValid: false,
+      reason: 'intro_pattern',
+      details: `Phase B が導入文型で開始: "${firstB.slice(0, 30)}..."`,
+    };
+  }
+
+  return {
+    isValid: true,
+    reason: null,
+    details: '',
+  };
+}
