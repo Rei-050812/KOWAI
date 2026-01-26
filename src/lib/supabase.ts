@@ -20,7 +20,7 @@ function getSupabaseClient(): SupabaseClient {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase環境変数が設定されていません");
+    throw new Error("Supabase迺ｰ蠅・・ｽ・ｽ謨ｰ縺瑚ｨｭ螳壹＆繧後※縺・・ｽ・ｽ縺帙ｓ");
   }
 
   supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -28,12 +28,12 @@ function getSupabaseClient(): SupabaseClient {
 }
 
 // =============================================
-// ヘルパー関数
+// 繝倥Ν繝托ｿｽE髢｢謨ｰ
 // =============================================
 
 /**
- * DBから取得したstoryデータをStoryWithScore型に変換
- * share_count, scoreのnull対応を一元化
+ * DB縺九ｉ蜿門ｾ励＠縺殱tory繝・・ｽE繧ｿ繧担toryWithScore蝙九↓螟画鋤
+ * share_count, score縺ｮnull蟇ｾ蠢懊ｒ荳蜈・・ｽ・ｽ
  */
 function toStoryWithScore(data: unknown[]): StoryWithScore[] {
   return (data || []).map((story) => {
@@ -46,7 +46,7 @@ function toStoryWithScore(data: unknown[]): StoryWithScore[] {
   });
 }
 
-// 怪談を作成
+// 諤ｪ隲・・ｽ・ｽ菴懶ｿｽE
 export async function createStory(
   word: string,
   style: StoryStyle,
@@ -75,13 +75,13 @@ export async function createStory(
 
   if (error) {
     console.error("Error creating story:", error);
-    throw new Error("怪談の保存に失敗しました");
+    throw new Error("諤ｪ隲・・ｽE菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return data as Story;
 }
 
-// 怪談を取得（ID指定）
+// 諤ｪ隲・・ｽ・ｽ蜿門ｾ暦ｼ・D謖・・ｽ・ｽ・・
 export async function getStoryById(id: string): Promise<Story | null> {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -95,21 +95,21 @@ export async function getStoryById(id: string): Promise<Story | null> {
       return null;
     }
     console.error("Error fetching story:", error);
-    throw new Error("怪談の取得に失敗しました");
+    throw new Error("諤ｪ隲・・ｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return data as Story;
 }
 
-// 閲覧数をインクリメント
+// 髢ｲ隕ｧ謨ｰ繧偵う繝ｳ繧ｯ繝ｪ繝｡繝ｳ繝・
 export async function incrementViews(id: string): Promise<void> {
   const client = getSupabaseClient();
 
-  // RPC関数を使用（失敗時はフォールバック）
+  // RPC髢｢謨ｰ繧剃ｽｿ逕ｨ・ｽE・ｽ螟ｱ謨玲凾縺ｯ繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ・ｽE・ｽE
   const { error: rpcError } = await client.rpc("increment_views", { story_id: id });
 
   if (rpcError) {
-    // RPC関数がない場合は通常のupdateを使用
+    // RPC髢｢謨ｰ縺後↑縺・・ｽ・ｽ蜷茨ｿｽE騾壼ｸｸ縺ｮupdate繧剃ｽｿ逕ｨ
     const { data } = await client
       .from("stories")
       .select("views")
@@ -129,11 +129,11 @@ export async function incrementViews(id: string): Promise<void> {
   }
 }
 
-// いいねをインクリメント
+// 縺・・ｽ・ｽ縺ｭ繧偵う繝ｳ繧ｯ繝ｪ繝｡繝ｳ繝・
 export async function incrementLikes(id: string): Promise<number> {
   const client = getSupabaseClient();
 
-  // まず現在の値を取得
+  // 縺ｾ縺夂樟蝨ｨ縺ｮ蛟､繧貞叙蠕・
   const { data: currentData } = await client
     .from("stories")
     .select("likes")
@@ -149,13 +149,13 @@ export async function incrementLikes(id: string): Promise<number> {
 
   if (error) {
     console.error("Error incrementing likes:", error);
-    throw new Error("いいねに失敗しました");
+    throw new Error("縺・・ｽ・ｽ縺ｭ縺ｫ螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return newLikes;
 }
 
-// 最新の怪談を取得
+// 譛譁ｰ縺ｮ諤ｪ隲・・ｽ・ｽ蜿門ｾ・
 export async function getLatestStories(limit: number = 10): Promise<Story[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -166,13 +166,13 @@ export async function getLatestStories(limit: number = 10): Promise<Story[]> {
 
   if (error) {
     console.error("Error fetching latest stories:", error);
-    throw new Error("怪談の取得に失敗しました");
+    throw new Error("諤ｪ隲・・ｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return data as Story[];
 }
 
-// 人気の怪談を取得（いいね数順）
+// 莠ｺ豌暦ｿｽE諤ｪ隲・・ｽ・ｽ蜿門ｾ暦ｼ医＞縺・・ｽE謨ｰ鬆・・ｽ・ｽE
 export async function getPopularStories(limit: number = 10): Promise<Story[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -184,17 +184,17 @@ export async function getPopularStories(limit: number = 10): Promise<Story[]> {
 
   if (error) {
     console.error("Error fetching popular stories:", error);
-    throw new Error("怪談の取得に失敗しました");
+    throw new Error("諤ｪ隲・・ｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return data as Story[];
 }
 
-// 単語カウントをインクリメント
+// 蜊倩ｪ槭き繧ｦ繝ｳ繝医ｒ繧､繝ｳ繧ｯ繝ｪ繝｡繝ｳ繝・
 export async function incrementWordCount(word: string): Promise<void> {
   const client = getSupabaseClient();
 
-  // まず単語が存在するか確認
+  // 縺ｾ縺壼腰隱槭′蟄伜惠縺吶ｋ縺狗｢ｺ隱・
   const { data: existingWord } = await client
     .from("words")
     .select("*")
@@ -202,20 +202,20 @@ export async function incrementWordCount(word: string): Promise<void> {
     .single();
 
   if (existingWord) {
-    // 存在する場合はカウントを増加
+    // 蟄伜惠縺吶ｋ蝣ｴ蜷茨ｿｽE繧ｫ繧ｦ繝ｳ繝医ｒ蠅怜刈
     await client
       .from("words")
       .update({ count: existingWord.count + 1 })
       .eq("word", word);
   } else {
-    // 存在しない場合は新規作成
+    // 蟄伜惠縺励↑縺・・ｽ・ｽ蜷茨ｿｽE譁ｰ隕丈ｽ懶ｿｽE
     await client
       .from("words")
       .insert({ word, count: 1 });
   }
 }
 
-// 人気の単語を取得
+// 莠ｺ豌暦ｿｽE蜊倩ｪ槭ｒ蜿門ｾ・
 export async function getPopularWords(limit: number = 10): Promise<WordCount[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -226,17 +226,17 @@ export async function getPopularWords(limit: number = 10): Promise<WordCount[]> 
 
   if (error) {
     console.error("Error fetching popular words:", error);
-    throw new Error("単語の取得に失敗しました");
+    throw new Error("蜊倩ｪ橸ｿｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return data as WordCount[];
 }
 
 // =============================================
-// ランキング・カテゴリー機能
+// 繝ｩ繝ｳ繧ｭ繝ｳ繧ｰ繝ｻ繧ｫ繝・・ｽ・ｽ繝ｪ繝ｼ讖滂ｿｽE
 // =============================================
 
-// 殿堂入り（7日以上経過、100閲覧以上、スコア上位50件）
+// 谿ｿ蝣ゑｿｽE繧奇ｼ・譌･莉･荳顔ｵ碁℃縲・00髢ｲ隕ｧ莉･荳翫√せ繧ｳ繧｢荳贋ｽ・0莉ｶ・ｽE・ｽE
 export async function getHallOfFameStories(limit: number = 50): Promise<StoryWithScore[]> {
   const client = getSupabaseClient();
   const sevenDaysAgo = new Date();
@@ -252,13 +252,13 @@ export async function getHallOfFameStories(limit: number = 50): Promise<StoryWit
 
   if (error) {
     console.error("Error fetching hall of fame:", error);
-    throw new Error("殿堂入りの取得に失敗しました");
+    throw new Error("谿ｿ蝣ゑｿｽE繧奇ｿｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return toStoryWithScore(data || []);
 }
 
-// 週間ランキング（過去7日間、スコア上位20件）
+// 騾ｱ髢薙Λ繝ｳ繧ｭ繝ｳ繧ｰ・ｽE・ｽ驕主悉7譌･髢薙√せ繧ｳ繧｢荳贋ｽ・0莉ｶ・ｽE・ｽE
 export async function getWeeklyRankingStories(limit: number = 20): Promise<StoryWithScore[]> {
   const client = getSupabaseClient();
   const sevenDaysAgo = new Date();
@@ -273,13 +273,13 @@ export async function getWeeklyRankingStories(limit: number = 20): Promise<Story
 
   if (error) {
     console.error("Error fetching weekly ranking:", error);
-    throw new Error("週間ランキングの取得に失敗しました");
+    throw new Error("騾ｱ髢薙Λ繝ｳ繧ｭ繝ｳ繧ｰ縺ｮ蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return toStoryWithScore(data || []);
 }
 
-// 月間ランキング（過去30日間、スコア上位30件）
+// 譛磯俣繝ｩ繝ｳ繧ｭ繝ｳ繧ｰ・ｽE・ｽ驕主悉30譌･髢薙√せ繧ｳ繧｢荳贋ｽ・0莉ｶ・ｽE・ｽE
 export async function getMonthlyRankingStories(limit: number = 30): Promise<StoryWithScore[]> {
   const client = getSupabaseClient();
   const thirtyDaysAgo = new Date();
@@ -294,13 +294,13 @@ export async function getMonthlyRankingStories(limit: number = 30): Promise<Stor
 
   if (error) {
     console.error("Error fetching monthly ranking:", error);
-    throw new Error("月間ランキングの取得に失敗しました");
+    throw new Error("譛磯俣繝ｩ繝ｳ繧ｭ繝ｳ繧ｰ縺ｮ蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return toStoryWithScore(data || []);
 }
 
-// Hidden Gems（閲覧10-100、いいね3以上、いいね率10%以上）
+// Hidden Gems・ｽE・ｽ髢ｲ隕ｧ10-100縲√＞縺・・ｽE3莉･荳翫√＞縺・・ｽE邇・0%莉･荳奇ｼ・
 export async function getHiddenGems(limit: number = 20): Promise<StoryWithScore[]> {
   const client = getSupabaseClient();
 
@@ -315,10 +315,10 @@ export async function getHiddenGems(limit: number = 20): Promise<StoryWithScore[
 
   if (error) {
     console.error("Error fetching hidden gems:", error);
-    throw new Error("隠れた名作の取得に失敗しました");
+    throw new Error("髫繧後◆蜷堺ｽ懶ｿｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
-  // いいね率10%以上でフィルタリング
+  // 縺・・ｽ・ｽ縺ｭ邇・0%莉･荳翫〒繝輔ぅ繝ｫ繧ｿ繝ｪ繝ｳ繧ｰ
   const filteredData = (data || [])
     .filter(story => (story.likes / story.views) >= 0.1)
     .slice(0, limit);
@@ -326,14 +326,14 @@ export async function getHiddenGems(limit: number = 20): Promise<StoryWithScore[
   return toStoryWithScore(filteredData);
 }
 
-// トレンド単語（24時間比較、成長率計算）
+// 繝医Ξ繝ｳ繝牙腰隱橸ｼ・4譎る俣豈碑ｼ・・ｽ・ｽ・ｽE髟ｷ邇・・ｽ・ｽ邂暦ｼ・
 export async function getTrendingWords(limit: number = 10): Promise<TrendWord[]> {
   const client = getSupabaseClient();
   const now = new Date();
   const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-  // 過去24時間の単語使用
+  // 驕主悉24譎る俣縺ｮ蜊倩ｪ樔ｽｿ逕ｨ
   const { data: currentData, error: currentError } = await client
     .from("word_usage_logs")
     .select("word")
@@ -341,10 +341,10 @@ export async function getTrendingWords(limit: number = 10): Promise<TrendWord[]>
 
   if (currentError) {
     console.error("Error fetching current word usage:", currentError);
-    throw new Error("トレンド単語の取得に失敗しました");
+    throw new Error("繝医Ξ繝ｳ繝牙腰隱橸ｿｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
-  // 24-48時間前の単語使用
+  // 24-48譎る俣蜑搾ｿｽE蜊倩ｪ樔ｽｿ逕ｨ
   const { data: previousData, error: previousError } = await client
     .from("word_usage_logs")
     .select("word")
@@ -353,10 +353,10 @@ export async function getTrendingWords(limit: number = 10): Promise<TrendWord[]>
 
   if (previousError) {
     console.error("Error fetching previous word usage:", previousError);
-    throw new Error("トレンド単語の取得に失敗しました");
+    throw new Error("繝医Ξ繝ｳ繝牙腰隱橸ｿｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
-  // 単語カウントを集計
+  // 蜊倩ｪ槭き繧ｦ繝ｳ繝医ｒ髮・・ｽ・ｽE
   const currentCounts: Record<string, number> = {};
   (currentData || []).forEach(log => {
     currentCounts[log.word] = (currentCounts[log.word] || 0) + 1;
@@ -367,7 +367,7 @@ export async function getTrendingWords(limit: number = 10): Promise<TrendWord[]>
     previousCounts[log.word] = (previousCounts[log.word] || 0) + 1;
   });
 
-  // 成長率を計算
+  // 謌宣聞邇・・ｽ・ｽ險育ｮ・
   const trendWords: TrendWord[] = Object.entries(currentCounts)
     .map(([word, current_count]) => {
       const previous_count = previousCounts[word] || 0;
@@ -383,7 +383,7 @@ export async function getTrendingWords(limit: number = 10): Promise<TrendWord[]>
   return trendWords;
 }
 
-// スタイル別の怪談を取得
+// 繧ｹ繧ｿ繧､繝ｫ蛻･縺ｮ諤ｪ隲・・ｽ・ｽ蜿門ｾ・
 export async function getStoriesByStyle(style: StoryStyle, limit: number = 20): Promise<StoryWithScore[]> {
   const client = getSupabaseClient();
 
@@ -396,22 +396,22 @@ export async function getStoriesByStyle(style: StoryStyle, limit: number = 20): 
 
   if (error) {
     console.error("Error fetching stories by style:", error);
-    throw new Error("スタイル別怪談の取得に失敗しました");
+    throw new Error("繧ｹ繧ｿ繧､繝ｫ蛻･諤ｪ隲・・ｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return toStoryWithScore(data || []);
 }
 
-// シェア数をインクリメント
+// 繧ｷ繧ｧ繧｢謨ｰ繧偵う繝ｳ繧ｯ繝ｪ繝｡繝ｳ繝・
 export async function incrementShareCount(id: string): Promise<number> {
   const client = getSupabaseClient();
 
-  // RPC関数を使用
+  // RPC髢｢謨ｰ繧剃ｽｿ逕ｨ
   const { data, error } = await client.rpc("increment_share_count", { story_id: id });
 
   if (error) {
     console.error("Error incrementing share count (RPC):", error);
-    // RPC関数がない場合はフォールバック
+    // RPC髢｢謨ｰ縺後↑縺・・ｽ・ｽ蜷茨ｿｽE繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ
     const { data: currentData } = await client
       .from("stories")
       .select("share_count")
@@ -427,7 +427,7 @@ export async function incrementShareCount(id: string): Promise<number> {
 
     if (updateError) {
       console.error("Error incrementing share count:", updateError);
-      throw new Error("シェア数の更新に失敗しました");
+      throw new Error("繧ｷ繧ｧ繧｢謨ｰ縺ｮ譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆");
     }
 
     return newShareCount;
@@ -436,7 +436,7 @@ export async function incrementShareCount(id: string): Promise<number> {
   return data as number;
 }
 
-// 単語使用ログを記録
+// 蜊倩ｪ樔ｽｿ逕ｨ繝ｭ繧ｰ繧定ｨ倬鹸
 export async function logWordUsage(word: string, storyId: string): Promise<void> {
   const client = getSupabaseClient();
 
@@ -446,15 +446,15 @@ export async function logWordUsage(word: string, storyId: string): Promise<void>
 
   if (error) {
     console.error("Error logging word usage:", error);
-    // エラーがあっても怪談生成には影響させない
+    // 繧ｨ繝ｩ繝ｼ縺後≠縺｣縺ｦ繧よｪ隲・・ｽ・ｽ謌舌↓縺ｯ蠖ｱ髻ｿ縺輔○縺ｪ縺・
   }
 }
 
-// ランダムな怪談を取得
+// 繝ｩ繝ｳ繝繝縺ｪ諤ｪ隲・・ｽ・ｽ蜿門ｾ・
 export async function getRandomStories(limit: number = 5): Promise<StoryWithScore[]> {
   const client = getSupabaseClient();
 
-  // まず総数を取得
+  // 縺ｾ縺夂ｷ乗焚繧貞叙蠕・
   const { count, error: countError } = await client
     .from("stories")
     .select("*", { count: "exact", head: true });
@@ -464,7 +464,7 @@ export async function getRandomStories(limit: number = 5): Promise<StoryWithScor
     return [];
   }
 
-  // ランダムなオフセットを生成
+  // 繝ｩ繝ｳ繝繝縺ｪ繧ｪ繝輔そ繝・・ｽ・ｽ繧堤函謌・
   const randomOffset = Math.floor(Math.random() * Math.max(0, count - limit));
 
   const { data, error } = await client
@@ -474,18 +474,18 @@ export async function getRandomStories(limit: number = 5): Promise<StoryWithScor
 
   if (error) {
     console.error("Error fetching random stories:", error);
-    throw new Error("ランダム怪談の取得に失敗しました");
+    throw new Error("繝ｩ繝ｳ繝繝諤ｪ隲・・ｽE蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return toStoryWithScore(data || []);
 }
 
 // =============================================
-// RAG Blueprint 関連（タグベース検索版）
+// RAG Blueprint 髢｢騾｣・ｽE・ｽ繧ｿ繧ｰ繝呻ｿｽE繧ｹ讀懃ｴ｢迚茨ｼ・
 // =============================================
 
 /**
- * Blueprintを保存
+ * Blueprint繧剃ｿ晏ｭ・
  */
 export async function saveBlueprint(
   title: string,
@@ -508,14 +508,14 @@ export async function saveBlueprint(
 
   if (error) {
     console.error("Error saving blueprint:", error);
-    throw new Error("Blueprintの保存に失敗しました");
+    throw new Error("Blueprint縺ｮ菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return { id: data.id };
 }
 
 /**
- * キーワードでBlueprintを検索（タグベース）
+ * 繧ｭ繝ｼ繝ｯ繝ｼ繝峨〒Blueprint繧呈､懃ｴ｢・ｽE・ｽ繧ｿ繧ｰ繝呻ｿｽE繧ｹ・ｽE・ｽE
  */
 export async function matchBlueprintsByKeyword(
   keyword: string,
@@ -532,18 +532,18 @@ export async function matchBlueprintsByKeyword(
 
   if (error) {
     console.error("Error matching blueprints:", error);
-    throw new Error("Blueprintの検索に失敗しました");
+    throw new Error("Blueprint縺ｮ讀懃ｴ｢縺ｫ螟ｱ謨励＠縺ｾ縺励◆");
   }
 
-  // match_scoreをsimilarityに変換（互換性のため）
+  // match_score繧痴imilarity縺ｫ螟画鋤・ｽE・ｽ莠呈鋤諤ｧ縺ｮ縺溘ａ・ｽE・ｽE
   return (data || []).map((item: { id: number; title: string; blueprint: KaidanBlueprintData; tags: string[]; quality_score: number; match_score: number }) => ({
     ...item,
-    similarity: item.match_score / 15, // 正規化（max=15程度）
+    similarity: item.match_score / 15, // 豁｣隕丞喧・ｽE・ｽEax=15遞句ｺｦ・ｽE・ｽE
   })) as BlueprintSearchResult[];
 }
 
 /**
- * ランダムにBlueprintを取得（フォールバック用）
+ * 繝ｩ繝ｳ繝繝縺ｫBlueprint繧貞叙蠕暦ｼ医ヵ繧ｩ繝ｼ繝ｫ繝舌ャ繧ｯ逕ｨ・ｽE・ｽE
  */
 export async function getRandomBlueprint(
   minQuality: number = 30
@@ -563,12 +563,12 @@ export async function getRandomBlueprint(
 
   return {
     ...data[0],
-    similarity: 0.5, // ランダム取得なので中間値
+    similarity: 0.5, // 繝ｩ繝ｳ繝繝蜿門ｾ励↑縺ｮ縺ｧ荳ｭ髢灘､
   } as BlueprintSearchResult;
 }
 
 /**
- * 全Blueprintを取得（管理用）
+ * 蜈ｨBlueprint繧貞叙蠕暦ｼ育ｮ｡逅・・ｽ・ｽ・ｽE・ｽE
  */
 export async function getAllBlueprints(limit: number = 100): Promise<{
   id: number;
@@ -587,14 +587,14 @@ export async function getAllBlueprints(limit: number = 100): Promise<{
 
   if (error) {
     console.error("Error fetching blueprints:", error);
-    throw new Error("Blueprintの取得に失敗しました");
+    throw new Error("Blueprint縺ｮ蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return data || [];
 }
 
 /**
- * 全Blueprintをフルデータで取得（正規化用）
+ * 蜈ｨBlueprint繧偵ヵ繝ｫ繝・・ｽE繧ｿ縺ｧ蜿門ｾ暦ｼ域ｭ｣隕丞喧逕ｨ・ｽE・ｽE
  */
 export async function getAllBlueprintsFull(): Promise<{
   id: number;
@@ -613,14 +613,14 @@ export async function getAllBlueprintsFull(): Promise<{
 
   if (error) {
     console.error("Error fetching full blueprints:", error);
-    throw new Error("Blueprintの取得に失敗しました");
+    throw new Error("Blueprint縺ｮ蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
   }
 
   return data || [];
 }
 
 /**
- * Blueprintを更新
+ * Blueprint繧呈峩譁ｰ
  */
 export async function updateBlueprint(
   id: number,
@@ -640,16 +640,16 @@ export async function updateBlueprint(
 
   if (error) {
     console.error("Error updating blueprint:", error);
-    throw new Error("Blueprintの更新に失敗しました");
+    throw new Error("Blueprint縺ｮ譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆");
   }
 }
 
 // =============================================
-// 3フェーズ生成ログ
+// 3繝輔ぉ繝ｼ繧ｺ逕滂ｿｽE繝ｭ繧ｰ
 // =============================================
 
 /**
- * 3フェーズ生成ログの入力データ
+ * 3繝輔ぉ繝ｼ繧ｺ逕滂ｿｽE繝ｭ繧ｰ縺ｮ蜈･蜉帙ョ繝ｼ繧ｿ
  */
 export interface SaveGenerationLogInput {
   storyId: string;
@@ -666,31 +666,31 @@ export interface SaveGenerationLogInput {
   phaseCPrompt: string;
   phaseCText: string;
   finalStory: string;
-  // バリデーション統計
+  // 繝舌Μ繝・・ｽE繧ｷ繝ｧ繝ｳ邨ｱ險・
   retryCountPhaseA: number;
   retryCountPhaseB: number;
   retryCountPhaseC: number;
   keywordMissDetected: boolean;
   incompleteQuoteDetected: boolean;
-  // 重複除去ログ
+  // 驥崎､・・ｽ・ｽ蜴ｻ繝ｭ繧ｰ
   dedupeApplied: boolean;
   dedupeTarget: 'A-B' | 'B-C' | null;
   dedupeMethod: 'trim_head' | null;
-  // 多様性ガードログ
+  // 螟壽ｧ俶ｧ繧ｬ繝ｼ繝峨Ο繧ｰ
   diversityGuardTriggered: boolean;
   diversityGuardReason: string | null;
   diversityRetryCount: number;
-  // Phase C クライマックスチェック
+  // Phase C 繧ｯ繝ｩ繧､繝槭ャ繧ｯ繧ｹ繝√ぉ繝・・ｽ・ｽ
   endingPeakOk: boolean;
   endingRetryCount: number;
-  // キーワード主役化チェック
+  // 繧ｭ繝ｼ繝ｯ繝ｼ繝我ｸｻ蠖ｹ蛹悶メ繧ｧ繝・・ｽ・ｽ
   keywordFocusOk: boolean;
   keywordFocusCount: number;
   keywordFocusRetryCount: number;
 }
 
 /**
- * 3フェーズ生成ログを保存
+ * 3繝輔ぉ繝ｼ繧ｺ逕滂ｿｽE繝ｭ繧ｰ繧剃ｿ晏ｭ・
  */
 export async function saveGenerationLog(input: SaveGenerationLogInput): Promise<void> {
   const client = getSupabaseClient();
@@ -710,24 +710,24 @@ export async function saveGenerationLog(input: SaveGenerationLogInput): Promise<
     phase_c_prompt: input.phaseCPrompt,
     phase_c_text: input.phaseCText,
     final_story: input.finalStory,
-    // バリデーション統計
+    // 繝舌Μ繝・・ｽE繧ｷ繝ｧ繝ｳ邨ｱ險・
     retry_count_phase_a: input.retryCountPhaseA,
     retry_count_phase_b: input.retryCountPhaseB,
     retry_count_phase_c: input.retryCountPhaseC,
     keyword_miss_detected: input.keywordMissDetected,
     incomplete_quote_detected: input.incompleteQuoteDetected,
-    // 重複除去ログ
+    // 驥崎､・・ｽ・ｽ蜴ｻ繝ｭ繧ｰ
     dedupe_applied: input.dedupeApplied,
     dedupe_target: input.dedupeTarget,
     dedupe_method: input.dedupeMethod,
-    // 多様性ガードログ
+    // 螟壽ｧ俶ｧ繧ｬ繝ｼ繝峨Ο繧ｰ
     diversity_guard_triggered: input.diversityGuardTriggered,
     diversity_guard_reason: input.diversityGuardReason,
     diversity_retry_count: input.diversityRetryCount,
-    // Phase C クライマックスチェック
+    // Phase C 繧ｯ繝ｩ繧､繝槭ャ繧ｯ繧ｹ繝√ぉ繝・・ｽ・ｽ
     ending_peak_ok: input.endingPeakOk,
     ending_retry_count: input.endingRetryCount,
-    // キーワード主役化チェック
+    // 繧ｭ繝ｼ繝ｯ繝ｼ繝我ｸｻ蠖ｹ蛹悶メ繧ｧ繝・・ｽ・ｽ
     keyword_focus_ok: input.keywordFocusOk,
     keyword_focus_count: input.keywordFocusCount,
     keyword_focus_retry_count: input.keywordFocusRetryCount,
@@ -735,17 +735,17 @@ export async function saveGenerationLog(input: SaveGenerationLogInput): Promise<
 
   if (error) {
     console.error("Error saving generation log:", error);
-    // ログ保存失敗は怪談生成には影響させない
+    // 繝ｭ繧ｰ菫晏ｭ伜､ｱ謨暦ｿｽE諤ｪ隲・・ｽ・ｽ謌舌↓縺ｯ蠖ｱ髻ｿ縺輔○縺ｪ縺・
   }
 }
 
 // =============================================
-// フォールバック用Blueprint検索
+// 繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ逕ｨBlueprint讀懃ｴ｢
 // =============================================
 
 /**
- * 緩い条件でBlueprintを検索（near フォールバック用）
- * min_qualityを下げて再検索
+ * 邱ｩ縺・・ｽ・ｽ莉ｶ縺ｧBlueprint繧呈､懃ｴ｢・ｽE・ｽEear 繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ逕ｨ・ｽE・ｽE
+ * min_quality繧剃ｸ九￡縺ｦ蜀肴､懃ｴ｢
  */
 export async function matchBlueprintsLoose(
   keyword: string,
@@ -771,7 +771,7 @@ export async function matchBlueprintsLoose(
 }
 
 // =============================================
-// 多様性ガード用：直近のストーリーメタ取得
+// 螟壽ｧ俶ｧ繧ｬ繝ｼ繝臥畑・ｽE・ｽ逶ｴ霑托ｿｽE繧ｹ繝茨ｿｽE繝ｪ繝ｼ繝｡繧ｿ蜿門ｾ・
 // =============================================
 
 export interface StoredStoryMeta {
@@ -781,7 +781,7 @@ export interface StoredStoryMeta {
 }
 
 /**
- * 直近N件のストーリーメタを取得
+ * 逶ｴ霑鮮莉ｶ縺ｮ繧ｹ繝茨ｿｽE繝ｪ繝ｼ繝｡繧ｿ繧貞叙蠕・
  */
 export async function getRecentStoryMetas(limit: number = 3): Promise<StoredStoryMeta[]> {
   const client = getSupabaseClient();
@@ -801,4 +801,84 @@ export async function getRecentStoryMetas(limit: number = 3): Promise<StoredStor
   return (data || [])
     .map((row: { story_meta: StoredStoryMeta | null }) => row.story_meta)
     .filter((meta): meta is StoredStoryMeta => meta !== null);
+}
+
+// =============================================
+// Admin review helpers
+// =============================================
+
+export interface AdminReviewQueueItem {
+  log_id?: string;
+  story_id: string;
+  title?: string;
+  hook?: string;
+  story?: string;
+  final_story?: string;
+  story_text?: string;
+  created_at: string;
+  blueprint_id: number | null;
+  target_length?: string;
+  ending_type?: string | null;
+  priority?: number;
+  event_repetition_detected?: boolean;
+  action_consistency_issue?: boolean;
+  quote_incomplete_detected?: boolean;
+  coherence_issue?: boolean;
+  retry_total?: number;
+  fallback_reason?: string;
+}
+
+export type AdminQueueType = "priority" | "all" | "random";
+
+export async function getAdminReviewQueue(
+  limit: number = 50
+): Promise<AdminReviewQueueItem[]> {
+  return getAdminReviewQueueByType("priority", limit);
+}
+
+export async function getAdminReviewQueueByType(
+  queueType: AdminQueueType,
+  limit: number = 50
+): Promise<AdminReviewQueueItem[]> {
+  const client = getSupabaseClient();
+  const viewName =
+    queueType === "all"
+      ? "admin_all_queue"
+      : queueType === "random"
+      ? "admin_random_queue"
+      : "admin_review_queue";
+
+  let query = client.from(viewName).select("*").limit(limit);
+  if (queueType === "priority") {
+    query = query.order("priority", { ascending: false });
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error fetching admin review queue:", error);
+    throw new Error("レビュー一覧の取得に失敗しました");
+  }
+
+  return (data || []) as AdminReviewQueueItem[];
+}
+
+export async function saveStoryReview(input: {
+  storyId: string;
+  rating: number | null;
+  issues: string[];
+  note: string | null;
+}): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from("story_reviews").insert({
+    story_id: input.storyId,
+    rating: input.rating,
+    issues: input.issues,
+    note: input.note,
+  });
+
+  if (error) {
+    console.error("Error saving story review:", error);
+    throw new Error("レビューの保存に失敗しました");
+  }
 }
