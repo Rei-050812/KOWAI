@@ -135,7 +135,7 @@ export default function AdminDashboardPage() {
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="ADMIN_TOKEN を入力"
+              placeholder="ADMIN_TOKEN"
               className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
             />
             <button
@@ -144,7 +144,7 @@ export default function AdminDashboardPage() {
               className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
               disabled={loading}
             >
-              {loading ? "読み込み中..." : "データ読み込み"}
+              {loading ? "読み込み中..." : "読み込み"}
             </button>
           </div>
         </div>
