@@ -640,7 +640,7 @@ export default function AdminBlueprintsPage() {
               className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
               disabled={loading}
             >
-              {loading ? "読込中..." : "読み込み"}
+              {loading ? "読み込み中..." : "読み込み"}
             </button>
           </div>
         </div>
