@@ -202,7 +202,7 @@ export default function AdminReviewsPage() {
   }, [currentItem, loading, handleSaveCurrent, handleNext, handlePrev]);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-8">
+    <div className="text-gray-100 p-8">
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">管理レビュー</h1>

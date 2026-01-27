@@ -125,7 +125,7 @@ export default function AdminDashboardPage() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-8">
+    <div className="text-gray-100 p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
