@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { KaidanBlueprintData } from "@/types";
+import { KaidanBlueprintData, StyleBlueprintData } from "@/types";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -165,6 +165,149 @@ ${TAG_RULES}
 ${blueprintTexts}
 
 【統合Blueprint出力】`;
+}
+
+/**
+ * D) 文体抽出用プロンプト：source_text -> StyleBlueprintData
+ */
+function getStyleExtractionPrompt(text: string): string {
+  return `あなたは洒落怖（2ch系怪談）の文体分析専門家です。以下の怪談本文から「書き方の流派（StyleBlueprint）」を抽出してください。
+
+【目的】
+この分析結果は、同じ文体で新しい怪談を生成するためのスタイル指示書として使われます。
+そのため、具体的なストーリー内容ではなく「書き方の癖・方向性」を抽出してください。
+
+【分析観点】
+1. 語り手の距離感：出来事をどの程度他人事として語っているか
+   - distant: 完全に報告者・記録者の立場
+   - involved: 体験者として語っているが感情を抑えている
+   - detached: 淡々と事実を列挙する
+
+2. 文の長さ傾向：
+   - short: 短文中心、切れ味重視
+   - mixed: 短文と長文を使い分ける
+   - flowing: 長めの文が多く、流れるような語り
+
+3. 感情表出レベル：
+   - 0: 完全抑制（怖い・不気味などの感情語を使わない）
+   - 1: 最小限（稀に漏れる程度）
+   - 2: 控えめ（感情は出すがオーバーではない）
+
+4. 擬音・効果音の使用：
+   - none: 使わない
+   - minimal: 重要な場面でのみ
+   - moderate: 適度に使用
+
+5. 会話文の傾向：
+   - rare: ほぼ地の文のみ
+   - functional: 必要最小限の会話
+   - natural: 自然な会話が多い
+
+6. 特徴的なフレーズ：原文そのままではなく「このスタイルらしい表現パターン」を一般化して抽出
+   例: 「〜だったと思う」「〜なのだが」「〜してしまった」
+
+7. 禁止事項：このスタイルが明らかに避けていること
+   例: 「過度な感情表現」「説明的な怪異描写」「読者への呼びかけ」
+
+8. 流派名：このスタイルを端的に表す名前（日本語で）
+   例: 「淡々実録型」「回想録調」「報告書風」「語り部型」
+
+【出力形式】
+以下のJSON形式のみで出力してください（前後に余計な文章を書かない）：
+{
+  "archetype_name": "流派名",
+  "tone_features": ["文体特徴1", "文体特徴2", "文体特徴3"],
+  "narrator_stance": "distant" | "involved" | "detached",
+  "emotion_level": 0 | 1 | 2,
+  "sentence_style": "short" | "mixed" | "flowing",
+  "onomatopoeia_usage": "none" | "minimal" | "moderate",
+  "dialogue_style": "rare" | "functional" | "natural",
+  "style_prohibitions": ["禁止事項1", "禁止事項2"],
+  "sample_phrases": ["スタイルらしい表現パターン1", "パターン2", "パターン3"]
+}
+
+【怪談本文】
+${text}
+
+【出力】`;
+}
+
+/**
+ * Claude APIでStyleBlueprintData JSONを生成
+ */
+async function callClaudeForStyle(prompt: string): Promise<StyleBlueprintData> {
+  const message = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 2000,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+  });
+
+  const content = message.content[0];
+  if (content.type !== "text") {
+    throw new Error("Unexpected response type from Claude");
+  }
+
+  return parseStyleBlueprint(content.text);
+}
+
+/**
+ * レスポンスからStyleBlueprintData JSONをパース
+ */
+function parseStyleBlueprint(text: string): StyleBlueprintData {
+  // コードブロックを除去
+  let jsonStr = text;
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1];
+  }
+
+  // JSONオブジェクトを抽出
+  const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    jsonStr = jsonMatch[0];
+  }
+
+  const parsed = JSON.parse(jsonStr);
+
+  // バリデーション＆デフォルト値設定
+  const validStances = ['distant', 'involved', 'detached'] as const;
+  const validEmotionLevels = [0, 1, 2] as const;
+  const validSentenceStyles = ['short', 'mixed', 'flowing'] as const;
+  const validOnomatopoeia = ['none', 'minimal', 'moderate'] as const;
+  const validDialogueStyles = ['rare', 'functional', 'natural'] as const;
+
+  return {
+    archetype_name: parsed.archetype_name || "不明",
+    tone_features: Array.isArray(parsed.tone_features) ? parsed.tone_features.slice(0, 5) : [],
+    narrator_stance: validStances.includes(parsed.narrator_stance) ? parsed.narrator_stance : 'distant',
+    emotion_level: validEmotionLevels.includes(parsed.emotion_level) ? parsed.emotion_level : 1,
+    sentence_style: validSentenceStyles.includes(parsed.sentence_style) ? parsed.sentence_style : 'mixed',
+    onomatopoeia_usage: validOnomatopoeia.includes(parsed.onomatopoeia_usage) ? parsed.onomatopoeia_usage : 'minimal',
+    dialogue_style: validDialogueStyles.includes(parsed.dialogue_style) ? parsed.dialogue_style : 'functional',
+    style_prohibitions: Array.isArray(parsed.style_prohibitions) ? parsed.style_prohibitions : [],
+    sample_phrases: Array.isArray(parsed.sample_phrases) ? parsed.sample_phrases.slice(0, 5) : [],
+  };
+}
+
+/**
+ * 長文から文体分析用の代表サンプルを抽出
+ * 冒頭・中盤・終盤からバランスよく取得
+ */
+function extractRepresentativeSample(text: string, maxLength: number = 8000): string {
+  if (text.length <= maxLength) return text;
+
+  const sectionLength = Math.floor(maxLength / 3);
+  const beginning = text.slice(0, sectionLength);
+  const middleStart = Math.floor(text.length / 2) - Math.floor(sectionLength / 2);
+  const middle = text.slice(middleStart, middleStart + sectionLength);
+  const ending = text.slice(-sectionLength);
+
+  return `${beginning}\n\n[...中略...]\n\n${middle}\n\n[...中略...]\n\n${ending}`;
 }
 
 // =============================================
@@ -360,10 +503,18 @@ export async function POST(request: NextRequest) {
     // tagsをblueprintから分離
     const { tags, ...blueprint } = result;
 
+    // 文体抽出（長文の場合は代表サンプルを使用）
+    const styleSampleText = textLength >= LONG_TEXT_THRESHOLD
+      ? extractRepresentativeSample(source_text)
+      : source_text;
+    const stylePrompt = getStyleExtractionPrompt(styleSampleText);
+    const styleData = await callClaudeForStyle(stylePrompt);
+
     // source_textを含めずにレスポンス
     return NextResponse.json({
       blueprint,
       tags: normalizeTags(tags), // 最終正規化
+      styleData,
       mode: textLength < LONG_TEXT_THRESHOLD ? "short" : "long",
       chunks: textLength < LONG_TEXT_THRESHOLD ? 1 : splitTextIntoChunks(source_text).length,
     });

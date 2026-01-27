@@ -644,6 +644,21 @@ export async function updateBlueprint(
   }
 }
 
+/**
+ * Blueprintを削除
+ */
+export async function deleteKaidanBlueprint(id: number): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from("kaidan_blueprints")
+    .delete()
+    .eq("id", id);
+  if (error) {
+    console.error("Error deleting blueprint:", error);
+    throw new Error("Blueprintの削除に失敗しました");
+  }
+}
+
 // =============================================
 // 3繝輔ぉ繝ｼ繧ｺ逕滂ｿｽE繝ｭ繧ｰ
 // =============================================
@@ -687,6 +702,9 @@ export interface SaveGenerationLogInput {
   keywordFocusOk: boolean;
   keywordFocusCount: number;
   keywordFocusRetryCount: number;
+  // StyleBlueprint（書き方の流派）
+  styleBlueprintId?: number | null;
+  styleBlueprintName?: string | null;
 }
 
 /**
@@ -731,6 +749,9 @@ export async function saveGenerationLog(input: SaveGenerationLogInput): Promise<
     keyword_focus_ok: input.keywordFocusOk,
     keyword_focus_count: input.keywordFocusCount,
     keyword_focus_retry_count: input.keywordFocusRetryCount,
+    // StyleBlueprint（書き方の流派）
+    style_blueprint_id: input.styleBlueprintId || null,
+    style_blueprint_name: input.styleBlueprintName || null,
   });
 
   if (error) {
@@ -881,4 +902,178 @@ export async function saveStoryReview(input: {
     console.error("Error saving story review:", error);
     throw new Error("レビューの保存に失敗しました");
   }
+}
+
+// =============================================
+// StyleBlueprint 関連
+// =============================================
+
+import { StyleBlueprint, StyleBlueprintData } from "@/types";
+
+/**
+ * StyleBlueprint を選択（複合スコア順で上位から取得）
+ * 最近使われていない＋高評価＋高品質を優先
+ */
+export async function selectStyleBlueprint(): Promise<StyleBlueprint | null> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client.rpc("select_style_blueprint");
+
+  if (error) {
+    console.error("Error selecting style blueprint:", error);
+    return null;
+  }
+
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  // 上位3件からランダム選択（多様性確保）
+  const top3 = data.slice(0, Math.min(3, data.length));
+  const selected = top3[Math.floor(Math.random() * top3.length)];
+
+  return {
+    id: selected.id,
+    archetype_name: selected.archetype_name,
+    style_data: selected.style_data as StyleBlueprintData,
+    quality_score: selected.quality_score,
+    usage_count: selected.usage_count,
+    last_used_at: selected.last_used_at,
+    avg_story_rating: selected.avg_story_rating,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  };
+}
+
+/**
+ * StyleBlueprint の使用を記録
+ */
+export async function recordStyleBlueprintUsage(styleId: number): Promise<void> {
+  const client = getSupabaseClient();
+
+  const { error } = await client.rpc("record_style_blueprint_usage", {
+    p_style_id: styleId,
+  });
+
+  if (error) {
+    console.error("Error recording style blueprint usage:", error);
+    // 使用記録の失敗は生成には影響させない
+  }
+}
+
+/**
+ * StyleBlueprint を保存
+ */
+export async function saveStyleBlueprint(
+  data: StyleBlueprintData,
+  qualityScore: number = 70
+): Promise<{ id: number }> {
+  const client = getSupabaseClient();
+
+  const { data: result, error } = await client
+    .from("style_blueprints")
+    .insert({
+      archetype_name: data.archetype_name,
+      style_data: data,
+      quality_score: qualityScore,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Error saving style blueprint:", error);
+    throw new Error("StyleBlueprintの保存に失敗しました");
+  }
+
+  return { id: result.id };
+}
+
+/**
+ * 有効な StyleBlueprint の数を取得
+ */
+export async function getActiveStyleBlueprintCount(): Promise<number> {
+  const client = getSupabaseClient();
+
+  const { count, error } = await client
+    .from("style_blueprints")
+    .select("*", { count: "exact", head: true })
+    .eq("is_active", true);
+
+  if (error) {
+    console.error("Error counting style blueprints:", error);
+    return 0;
+  }
+
+  return count || 0;
+}
+
+/**
+ * 全ての StyleBlueprint を取得（管理用：無効も含む）
+ */
+export async function getAllStyleBlueprints(): Promise<StyleBlueprint[]> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client
+    .from("style_blueprints")
+    .select("*")
+    .order("quality_score", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching style blueprints:", error);
+    return [];
+  }
+
+  return (data || []).map((row) => ({
+    ...row,
+    style_data: row.style_data as StyleBlueprintData,
+  })) as StyleBlueprint[];
+}
+
+/**
+ * StyleBlueprint を更新
+ */
+export async function updateStyleBlueprint(
+  id: number,
+  updates: {
+    is_active?: boolean;
+    quality_score?: number;
+    style_data?: StyleBlueprintData;
+    archetype_name?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+
+  const { error } = await client
+    .from("style_blueprints")
+    .update(updates)
+    .eq("id", id);
+
+  if (error) {
+    console.error("Error updating style blueprint:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * StyleBlueprint を削除
+ */
+export async function deleteStyleBlueprint(
+  id: number
+): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+
+  const { error } = await client
+    .from("style_blueprints")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("Error deleting style blueprint:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
 }

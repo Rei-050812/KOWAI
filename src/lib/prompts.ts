@@ -582,3 +582,73 @@ function getPhaseStyleGuide(style: StoryStyle, phase: 'A' | 'B' | 'C'): string {
 
   return `\n文字数目安: ${lengthGuides[style][phase]}`;
 }
+
+// =============================================
+// StyleBlueprint 注入（Phase B/C 専用）
+// =============================================
+
+import { StyleBlueprintData } from '@/types';
+
+/**
+ * StyleBlueprint をプロンプトに注入するためのテキストを生成
+ * Phase B / C でのみ使用（Phase A には適用しない）
+ *
+ * @param style StyleBlueprintData または null
+ * @returns プロンプトに追加する書き方指示テキスト
+ */
+export function buildStyleHint(style: StyleBlueprintData | null): string {
+  if (!style) return '';
+
+  const stanceLabels: Record<string, string> = {
+    distant: '客観的・距離を置いた語り',
+    involved: '当事者として巻き込まれた語り',
+    detached: '淡々と事実を述べる語り',
+  };
+
+  const emotionLabels = [
+    '感情を完全に抑制',
+    '感情は最小限',
+    '控えめに感情を出す',
+  ];
+
+  const sentenceLabels: Record<string, string> = {
+    short: '短い文を連ねる',
+    mixed: '長短を混ぜる',
+    flowing: '流れるような長文',
+  };
+
+  const dialogueLabels: Record<string, string> = {
+    rare: '会話は極力避ける',
+    functional: '必要最低限の会話のみ',
+    natural: '自然な会話を含める',
+  };
+
+  const stanceLabel = stanceLabels[style.narrator_stance] || style.narrator_stance;
+  const emotionLabel = emotionLabels[style.emotion_level] || '感情を抑制';
+  const sentenceLabel = sentenceLabels[style.sentence_style] || style.sentence_style;
+  const dialogueLabel = dialogueLabels[style.dialogue_style] || style.dialogue_style;
+
+  // 禁止事項を整形
+  const prohibitions = style.style_prohibitions.length > 0
+    ? style.style_prohibitions.join('、')
+    : '特になし';
+
+  // サンプルフレーズを整形
+  const samplePhrases = style.sample_phrases.length > 0
+    ? style.sample_phrases.map(p => `「${p}」`).join(' ')
+    : '';
+
+  return `
+【書き方指示（流派: ${style.archetype_name}）】
+視点: ${stanceLabel}
+感情: ${emotionLabel}
+文体: ${sentenceLabel}
+会話: ${dialogueLabel}
+
+文体の特徴:
+${style.tone_features.map(f => `- ${f}`).join('\n')}
+
+禁止: ${prohibitions}
+${samplePhrases ? `\n参考フレーズ: ${samplePhrases}` : ''}
+`;
+}

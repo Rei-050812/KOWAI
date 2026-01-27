@@ -20,12 +20,13 @@ KOWAIは、Claude AIを活用した次世代の怪談生成プラットフォー
 ### ✨ 特徴
 
 - 🧠 **Blueprint駆動RAGシステム**
-  - 怪談の構造パターンを「Blueprint」として蓄積
+  - 怪談の構造パターンを「KaidanBlueprint」として蓄積
+  - 文体パターンを「StyleBlueprint」として蓄積（語り口・感情レベル・禁止事項等）
   - タグベース検索による高速マッチング
   - 品質スコアによる階層的検索（70点→50点→30点→ランダム→汎用）
   - 生成した怪談にblueprint_idを記録（追跡可能）
-  - 管理画面から新しいBlueprintを登録可能
-  - 本文コピペからBlueprint自動抽出機能
+  - 統合管理画面から構造・文体を一括登録
+  - 本文コピペから構造+文体を同時自動抽出
   - Blueprint一括正規化API
 
 - 🔄 **3フェーズ生成システム**
@@ -126,6 +127,9 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# 管理画面の認証トークン
+ADMIN_TOKEN=your_admin_token_here
 ```
 
 #### APIキーの取得方法
@@ -313,13 +317,19 @@ KOWAI/
 │   │   │   ├── blueprints/   # Blueprint API
 │   │   │   │   ├── save/      # Blueprint保存
 │   │   │   │   ├── search/    # Blueprint検索
-│   │   │   │   ├── extract/   # 本文→Blueprint抽出（NEW!）
-│   │   │   │   └── normalize/ # Blueprint一括正規化（NEW!）
+│   │   │   │   ├── extract/   # 本文→Blueprint+StyleBlueprint抽出
+│   │   │   │   └── normalize/ # Blueprint一括正規化
+│   │   │   ├── admin/        # 管理者用API
+│   │   │   │   ├── blueprints/    # KaidanBlueprint CRUD
+│   │   │   │   ├── style-blueprints/ # StyleBlueprint CRUD
+│   │   │   │   └── dashboard/     # 統計ダッシュボードAPI
 │   │   │   ├── ranking/      # ランキングAPI
 │   │   │   └── stories/      # ストーリーAPI
 │   │   ├── admin/            # 管理画面
-│   │   │   ├── blueprints/  # Blueprint管理ページ
-│   │   │   └── ingest/      # 本文コピペ→Blueprint変換（NEW!）
+│   │   │   ├── blueprints/  # Blueprint統合管理（構造/文体/新規登録タブ）
+│   │   │   │   └── ingest/  # 本文→構造+文体の同時抽出
+│   │   │   ├── dashboard/   # 統計ダッシュボード
+│   │   │   └── reviews/     # レビュー管理
 │   │   ├── story/[id]/       # 怪談詳細ページ
 │   │   ├── ranking/          # ランキングページ
 │   │   ├── layout.tsx        # ルートレイアウト
@@ -330,9 +340,10 @@ KOWAI/
 │   │   ├── StoryDisplay.tsx    # 怪談表示
 │   │   └── RankingPreview.tsx  # ランキングプレビュー
 │   ├── lib/                   # ユーティリティ
-│   │   ├── prompts.ts          # AIプロンプト定義（3フェーズ対応）
-│   │   ├── supabase.ts         # Supabaseクライアント（Blueprint対応）
+│   │   ├── prompts.ts          # AIプロンプト定義（3フェーズ対応・StyleBlueprint注入）
+│   │   ├── supabase.ts         # Supabaseクライアント（Blueprint/StyleBlueprint対応）
 │   │   ├── blueprint-scoring.ts # Blueprint品質採点（共通ロジック）
+│   │   ├── style-validators.ts  # StyleBlueprintバリデーション
 │   │   ├── validators.ts       # 生成テキストバリデーション（未完セリフ検出等）
 │   │   ├── dedupe.ts           # Phase間重複除去
 │   │   ├── diversity.ts        # 多様性ガード（類似ストーリー回避）
@@ -348,7 +359,12 @@ KOWAI/
 │       ├── 003_generation_logs.sql              # 生成ログテーブル
 │       ├── 004_validation_stats.sql             # バリデーション統計
 │       ├── 005_quality_improvements.sql         # 品質改善カラム追加
-│       └── 006_keyword_focus.sql                # キーワード主役化チェック
+│       ├── 006_keyword_focus.sql                # キーワード主役化チェック
+│       ├── 007_story_reviews.sql                # ストーリーレビューテーブル
+│       ├── 008_admin_views.sql                  # 管理用ビュー
+│       ├── 009_review_functions.sql             # レビュー用RPC
+│       ├── 010_style_blueprints.sql             # StyleBlueprintテーブル+初期データ
+│       └── 011_unify_admin_queue_columns.sql    # 管理ビュー統一
 ├── public/                    # 静的ファイル
 ├── .env.local.example        # 環境変数のサンプル
 ├── next.config.ts            # Next.js設定
@@ -412,19 +428,59 @@ Blueprintは怪談の「構造的な怖さの設計図」です。入力され�
 
 ### 管理画面
 
-#### Blueprint登録（`/admin/blueprints`）
+#### Blueprint統合管理（`/admin/blueprints`）
 
-- フォームで各フィールドを入力
-- 自動採点機能（減点方式100点満点）
-- 自動タグ生成機能
-- 保存時にサーバー側で再採点
+タブ切替で構造（KaidanBlueprint）と文体（StyleBlueprint）を一括管理。
 
-#### 本文からBlueprint抽出（`/admin/ingest`）（NEW!）
+- **構造タブ**: KaidanBlueprint一覧表示・削除
+- **文体タブ**: StyleBlueprint一覧表示・編集・有効/無効切替・削除
+- **新規登録タブ**: KaidanBlueprintをJSON入力 + 任意でStyleBlueprintも同時登録
+  - 自動採点機能（減点方式100点満点）
+  - ingest画面からの一時データ読み込み対応
 
-- 怪談本文をコピペするだけでBlueprint JSONを自動抽出
-- 10,000文字以上の長文は自動分割処理
-- 抽出後は `/admin/blueprints` へ自動遷移
+#### 本文→Blueprint抽出（`/admin/blueprints/ingest`）
+
+- 怪談本文をコピペするだけで構造（KaidanBlueprint）と文体（StyleBlueprint）を**同時に**自動抽出
+- 10,000文字以上の長文は自動分割処理（構造抽出）、文体は代表サンプルで分析
+- 抽出後は `/admin/blueprints` へ自動遷移（sessionStorage経由）
 - **重要**: 本文はDBに保存されない（著作権保護）
+
+#### 統計ダッシュボード（`/admin/dashboard`）
+
+- 総ストーリー数（今週/今月）
+- 平均レビュー評価・評価分布
+- KaidanBlueprint/StyleBlueprintの登録状況
+- 品質フラグ集計（出来事重複・行動不整合・引用不完了・支離滅裂）
+- レビュー問題傾向
+- StyleBlueprint使用状況
+
+#### レビュー管理（`/admin/reviews`）
+
+- 自動品質フラグ付きのレビューキュー
+- 5段階評価 + 問題タグ付け
+- 優先度自動計算（品質フラグ数に応じて）
+
+### StyleBlueprint
+
+StyleBlueprintは怪談の「書き方の流派」を定義するスタイル指示書です。KaidanBlueprintが「何を書くか」を定義するのに対し、StyleBlueprintは「どう書くか」を定義します。
+
+```json
+{
+  "archetype_name": "淡々実録型",
+  "tone_features": ["体言止め多用", "短文主体"],
+  "narrator_stance": "distant",
+  "emotion_level": 0,
+  "sentence_style": "short",
+  "onomatopoeia_usage": "minimal",
+  "dialogue_style": "functional",
+  "style_prohibitions": ["過度な感情表現", "説明的な怪異描写"],
+  "sample_phrases": ["〜だったと思う", "〜なのだが"]
+}
+```
+
+- Phase B/Cの生成プロンプトに注入され、文体の一貫性を確保
+- 品質スコア・使用回数・平均評価による自動選別
+- 5つの初期スタイル同梱（淡々実録型・回想録調・報告書風・語り部型・断片記録型）
 
 #### Blueprint正規化API（`/api/blueprints/normalize`）
 
