@@ -6,8 +6,10 @@ import {
   Story,
   GenerationConfig,
   BlueprintSelectionResult,
+  StyleBlueprint,
+  StyleBlueprintData,
 } from "@/types";
-import { buildPhaseAPrompt, buildPhaseBPrompt, buildPhaseCPrompt } from "@/lib/prompts";
+import { buildPhaseAPrompt, buildPhaseBPrompt, buildPhaseCPrompt, buildStyleHint } from "@/lib/prompts";
 import {
   createStory,
   incrementWordCount,
@@ -17,6 +19,8 @@ import {
   getRandomBlueprint,
   saveGenerationLog,
   getRecentStoryMetas,
+  selectStyleBlueprint,
+  recordStyleBlueprintUsage,
 } from "@/lib/supabase";
 import { getGenericBlueprint, isGenericBlueprint } from "@/lib/generic-blueprint";
 import {
@@ -124,6 +128,9 @@ interface ValidationStats {
   phaseABSimilarityScore: number;
   phaseABSimilarityReason: 'high_similarity' | 'forbidden_start' | 'same_subject' | null;
   phaseABSimilarityRetryCount: number;
+  // StyleBlueprint（書き方の流派）
+  styleBlueprintId: number | null;
+  styleBlueprintName: string | null;
 }
 
 // =============================================
@@ -288,10 +295,17 @@ async function executeThreePhaseGeneration(
   word: string,
   style: StoryStyle,
   blueprint: BlueprintSearchResult,
-  recentMetas: StoryMeta[]
+  recentMetas: StoryMeta[],
+  styleBlueprint: StyleBlueprint | null
 ): Promise<{ result: ThreePhaseResult; stats: ValidationStats; storyMeta: StoryMeta }> {
   const bp = blueprint.blueprint;
   const endingMode = bp.ending_mode || "open";
+
+  // StyleBlueprint のスタイルヒントを構築（Phase B/C で使用）
+  const styleHint = styleBlueprint ? buildStyleHint(styleBlueprint.style_data) : '';
+  if (styleBlueprint) {
+    console.log(`[StyleBlueprint] Using: "${styleBlueprint.archetype_name}" (id=${styleBlueprint.id})`);
+  }
 
   const stats: ValidationStats = {
     retryCountPhaseA: 0,
@@ -340,6 +354,9 @@ async function executeThreePhaseGeneration(
     phaseABSimilarityScore: 0,
     phaseABSimilarityReason: null,
     phaseABSimilarityRetryCount: 0,
+    // StyleBlueprint（書き方の流派）
+    styleBlueprintId: styleBlueprint?.id || null,
+    styleBlueprintName: styleBlueprint?.archetype_name || null,
   };
 
   // 多様性ヒントを構築
@@ -412,7 +429,8 @@ async function executeThreePhaseGeneration(
   }
 
   // Phase B: disturbance（続き書き専用 + 導入文被り/出来事再描写/行動整合性チェック）
-  const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word, vocabCooldownHint);
+  // styleHint を Phase B に注入（Phase A には適用しない）
+  const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word, vocabCooldownHint + styleHint);
   let phaseBText = '';
   const MAX_PHASE_B_VALIDATION_RETRY = 2;
 
@@ -484,13 +502,14 @@ async function executeThreePhaseGeneration(
   }
 
   // Phase C: irreversible_point + climax チェック + 行動整合性チェック + キーワード主役化チェック
+  // styleHint を Phase C にも注入
   const combinedAB = `${phaseAText}\n\n${phaseBText}`;
   let phaseCText = '';
   let phaseCPrompt = '';
   const MAX_PHASE_C_VALIDATION_RETRY = 2;
 
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_C_VALIDATION_RETRY; validationAttempt++) {
-    phaseCPrompt = buildPhaseCPrompt(bp.irreversible_point, style, combinedAB, endingMode, word, vocabCooldownHint);
+    phaseCPrompt = buildPhaseCPrompt(bp.irreversible_point, style, combinedAB, endingMode, word, vocabCooldownHint + styleHint);
     console.log(`[Phase C] generating irreversible_point+climax (mode=${endingMode}, validation attempt ${validationAttempt + 1})...`);
     const phaseCResult = await generatePhaseWithRetry(phaseCPrompt, "Phase C");
     stats.retryCountPhaseC += phaseCResult.retryCount;
@@ -694,6 +713,9 @@ async function saveStoryWithLogs(
       keywordFocusOk: stats.keywordFocusOk,
       keywordFocusCount: stats.keywordFocusCount,
       keywordFocusRetryCount: stats.keywordFocusRetryCount,
+      // StyleBlueprint（書き方の流派）
+      styleBlueprintId: stats.styleBlueprintId,
+      styleBlueprintName: stats.styleBlueprintName,
     }),
   ]);
 
@@ -761,13 +783,35 @@ export async function POST(request: NextRequest) {
       // 失敗しても生成は続行
     }
 
-    // 3. 3フェーズ生成（リトライ付き + 多様性ガード + クライマックスチェック）
+    // 2.6. StyleBlueprint を選択（書き方の流派）
+    let styleBlueprint: StyleBlueprint | null = null;
+    try {
+      styleBlueprint = await selectStyleBlueprint();
+      if (styleBlueprint) {
+        console.log(
+          `[Generate] styleBlueprint="${styleBlueprint.archetype_name}" (id=${styleBlueprint.id})`
+        );
+      }
+    } catch (error) {
+      console.warn("[StyleBlueprint] Failed to select:", error);
+      // 失敗しても生成は続行（スタイルなしで生成）
+    }
+
+    // 3. 3フェーズ生成（リトライ付き + 多様性ガード + クライマックスチェック + スタイル適用）
     const { result, stats, storyMeta } = await executeThreePhaseGeneration(
       word,
       style,
       selection.blueprint,
-      recentMetas
+      recentMetas,
+      styleBlueprint
     );
+
+    // 3.5. StyleBlueprint の使用を記録
+    if (styleBlueprint) {
+      recordStyleBlueprintUsage(styleBlueprint.id).catch(err => {
+        console.warn("[StyleBlueprint] Failed to record usage:", err);
+      });
+    }
 
     // 統計ログ
     const hasRetries = stats.retryCountPhaseA > 0 || stats.retryCountPhaseB > 0 || stats.retryCountPhaseC > 0;

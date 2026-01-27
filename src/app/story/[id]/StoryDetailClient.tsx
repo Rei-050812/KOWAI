@@ -35,8 +35,8 @@ export default function StoryDetailClient({ story, shareCount = 0 }: StoryDetail
   const [hasLiked, setHasLiked] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
 
-  // hook + story を結合してタイピング
-  const fullText = `${story.hook}\n\n${story.story}`;
+  // story（全文）をタイピング表示（hookは一覧用プレビューなので詳細では不要）
+  const fullText = story.story;
   const { displayedText, isComplete, isTyping, skip, progress } = useTypingEffect(fullText, {
     speed: TYPING_SPEED,
     startDelay: 800,
