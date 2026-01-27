@@ -67,13 +67,6 @@ export async function POST(request: NextRequest) {
     const qualityScore = body.qualityScore ?? 70;
     const result = await saveStyleBlueprint(styleData, qualityScore);
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error || "保存に失敗しました" },
-        { status: 400 }
-      );
-    }
-
     return NextResponse.json({ ok: true, id: result.id });
   } catch (error) {
     console.error("[StyleBlueprints] POST error:", error);
