@@ -115,47 +115,44 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
   }
 
   // =============================================
-  // 2. 説明・解説を誘導していないか
+  // 2. 説明・解説を誘導していないか（警告のみ）
   // =============================================
 
   for (const keyword of EXPLANATION_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      // 否定的コンテキスト（「謎解きをしない」等）は許可
       if (!isInNegativeContext(allText, keyword)) {
-        violations.push({
+        warnings.push({
           rule: 'no_explanation',
-          severity: 'error',
-          detail: `「${keyword}」は洒落怖の作法に反します。説明・解説は禁止です`,
+          severity: 'warning',
+          detail: `「${keyword}」が含まれています。洒落怖では説明・解説を避けることが推奨されます`,
         });
       }
     }
   }
 
   // =============================================
-  // 3. オチ・結論を要求していないか
+  // 3. オチ・結論を要求していないか（警告のみ）
   // =============================================
 
   for (const keyword of ENDING_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      // 否定的コンテキストは許可
       if (!isInNegativeContext(allText, keyword)) {
-        violations.push({
+        warnings.push({
           rule: 'no_ending_reveal',
-          severity: 'error',
-          detail: `「${keyword}」は洒落怖では禁止です。オチや正体明かしは避けてください`,
+          severity: 'warning',
+          detail: `「${keyword}」が含まれています。洒落怖ではオチや正体明かしを避けることが推奨されます`,
         });
       }
     }
   }
 
   // =============================================
-  // 4. 感情語が支配的でないか
+  // 4. 感情語が支配的でないか（警告のみ）
   // =============================================
 
   let emotionCount = 0;
   for (const keyword of EMOTION_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      // 否定的コンテキスト（「怖いという表現は避ける」等）は除外
       if (!isInNegativeContext(allText, keyword)) {
         emotionCount++;
       }
@@ -163,10 +160,10 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
   }
 
   if (emotionCount >= 2) {
-    violations.push({
+    warnings.push({
       rule: 'no_emotion_dominance',
-      severity: 'error',
-      detail: `感情語が多すぎます（${emotionCount}個検出）。洒落怖は淡々とした語りが基本です`,
+      severity: 'warning',
+      detail: `感情語が多めです（${emotionCount}個検出）。洒落怖は淡々とした語りが基本です`,
     });
   } else if (emotionCount === 1) {
     warnings.push({
@@ -177,34 +174,32 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
   }
 
   // =============================================
-  // 5. 読者への語りかけがないか
+  // 5. 読者への語りかけがないか（警告のみ）
   // =============================================
 
   for (const pattern of READER_ADDRESS_PATTERNS) {
     if (allText.includes(pattern) && !allProhibitions.includes(pattern)) {
-      // 否定的コンテキストは許可
       if (!isInNegativeContext(allText, pattern)) {
-        violations.push({
+        warnings.push({
           rule: 'no_reader_address',
-          severity: 'error',
-          detail: `読者への語りかけ「${pattern}」は禁止です。洒落怖は体験談形式です`,
+          severity: 'warning',
+          detail: `「${pattern}」が含まれています。洒落怖は体験談形式が推奨されます`,
         });
       }
     }
   }
 
   // =============================================
-  // 6. 映画的・派手な表現がないか
+  // 6. 映画的・派手な表現がないか（警告のみ）
   // =============================================
 
   for (const keyword of CINEMATIC_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      // 否定的コンテキストは許可
       if (!isInNegativeContext(allText, keyword)) {
-        violations.push({
+        warnings.push({
           rule: 'no_cinematic',
-          severity: 'error',
-          detail: `「${keyword}」は洒落怖の世界観に合いません。派手な表現は避けてください`,
+          severity: 'warning',
+          detail: `「${keyword}」が含まれています。洒落怖では派手な表現を避けることが推奨されます`,
         });
       }
     }
