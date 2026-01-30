@@ -11,6 +11,31 @@ import { StyleBlueprintData, StyleValidationResult, StyleViolation } from '@/typ
 // 違反検出パターン
 // =============================================
 
+/** 否定的コンテキストを示すパターン（これらが後に続く場合は許可） */
+const NEGATIVE_CONTEXT_PATTERNS = [
+  'しない', 'をしない', 'は避ける', 'を避ける', '禁止', 'はNG', 'はしない',
+  'ない', 'なし', '不要', '排除', '控える', '抑える',
+];
+
+/**
+ * キーワードが否定的コンテキストで使われているかチェック
+ * 例: 「謎解きをしない」「説明は避ける」などはOK
+ */
+function isInNegativeContext(text: string, keyword: string): boolean {
+  const keywordIndex = text.indexOf(keyword);
+  if (keywordIndex === -1) return false;
+
+  // キーワードの後ろ10文字を確認
+  const afterKeyword = text.slice(keywordIndex + keyword.length, keywordIndex + keyword.length + 10);
+
+  for (const pattern of NEGATIVE_CONTEXT_PATTERNS) {
+    if (afterKeyword.includes(pattern)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** 説明・解説を誘導するキーワード */
 const EXPLANATION_KEYWORDS = [
   '説明する', '理由を', '原因は', '正体は', '解説', '考察',
@@ -95,11 +120,14 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
 
   for (const keyword of EXPLANATION_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      violations.push({
-        rule: 'no_explanation',
-        severity: 'error',
-        detail: `「${keyword}」は洒落怖の作法に反します。説明・解説は禁止です`,
-      });
+      // 否定的コンテキスト（「謎解きをしない」等）は許可
+      if (!isInNegativeContext(allText, keyword)) {
+        violations.push({
+          rule: 'no_explanation',
+          severity: 'error',
+          detail: `「${keyword}」は洒落怖の作法に反します。説明・解説は禁止です`,
+        });
+      }
     }
   }
 
@@ -109,11 +137,14 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
 
   for (const keyword of ENDING_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      violations.push({
-        rule: 'no_ending_reveal',
-        severity: 'error',
-        detail: `「${keyword}」は洒落怖では禁止です。オチや正体明かしは避けてください`,
-      });
+      // 否定的コンテキストは許可
+      if (!isInNegativeContext(allText, keyword)) {
+        violations.push({
+          rule: 'no_ending_reveal',
+          severity: 'error',
+          detail: `「${keyword}」は洒落怖では禁止です。オチや正体明かしは避けてください`,
+        });
+      }
     }
   }
 
@@ -124,7 +155,10 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
   let emotionCount = 0;
   for (const keyword of EMOTION_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      emotionCount++;
+      // 否定的コンテキスト（「怖いという表現は避ける」等）は除外
+      if (!isInNegativeContext(allText, keyword)) {
+        emotionCount++;
+      }
     }
   }
 
@@ -148,11 +182,14 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
 
   for (const pattern of READER_ADDRESS_PATTERNS) {
     if (allText.includes(pattern) && !allProhibitions.includes(pattern)) {
-      violations.push({
-        rule: 'no_reader_address',
-        severity: 'error',
-        detail: `読者への語りかけ「${pattern}」は禁止です。洒落怖は体験談形式です`,
-      });
+      // 否定的コンテキストは許可
+      if (!isInNegativeContext(allText, pattern)) {
+        violations.push({
+          rule: 'no_reader_address',
+          severity: 'error',
+          detail: `読者への語りかけ「${pattern}」は禁止です。洒落怖は体験談形式です`,
+        });
+      }
     }
   }
 
@@ -162,11 +199,14 @@ export function validateStyleBlueprint(data: StyleBlueprintData): StyleValidatio
 
   for (const keyword of CINEMATIC_KEYWORDS) {
     if (allText.includes(keyword) && !allProhibitions.includes(keyword)) {
-      violations.push({
-        rule: 'no_cinematic',
-        severity: 'error',
-        detail: `「${keyword}」は洒落怖の世界観に合いません。派手な表現は避けてください`,
-      });
+      // 否定的コンテキストは許可
+      if (!isInNegativeContext(allText, keyword)) {
+        violations.push({
+          rule: 'no_cinematic',
+          severity: 'error',
+          detail: `「${keyword}」は洒落怖の世界観に合いません。派手な表現は避けてください`,
+        });
+      }
     }
   }
 
