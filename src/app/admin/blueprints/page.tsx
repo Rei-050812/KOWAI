@@ -84,6 +84,11 @@ export default function AdminBlueprintsPage() {
     useState<StyleBlueprintData>(EMPTY_STYLE_DATA);
   const [editStyleQuality, setEditStyleQuality] = useState(70);
 
+  // StyleBlueprint新規作成（単体）
+  const [creatingNewStyle, setCreatingNewStyle] = useState(false);
+  const [newStyleData, setNewStyleData] = useState<StyleBlueprintData>(EMPTY_STYLE_DATA);
+  const [newStyleQuality, setNewStyleQuality] = useState(70);
+
   // sessionStorageからの一時Blueprint
   const [hasTempBlueprint, setHasTempBlueprint] = useState(false);
 
@@ -292,6 +297,45 @@ export default function AdminBlueprintsPage() {
       setLoading(false);
     }
   }, [editingStyleId, editStyleData, editStyleQuality, token, loadStyle]);
+
+  // --- StyleBlueprint単体の新規保存 ---
+  const handleSaveNewStyle = useCallback(async () => {
+    setLoading(true);
+    setStyleViolations([]);
+    setStyleWarnings([]);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/style-blueprints", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          styleData: newStyleData,
+          qualityScore: newStyleQuality,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.violations && data.violations.length > 0) {
+          setStyleViolations(data.violations);
+          setStyleWarnings(data.warnings || []);
+        }
+        throw new Error(data.error);
+      }
+      setCreatingNewStyle(false);
+      setNewStyleData(EMPTY_STYLE_DATA);
+      setNewStyleQuality(70);
+      await loadStyle();
+      setSuccess(`文体「${newStyleData.archetype_name}」を登録しました`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "登録に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }, [newStyleData, newStyleQuality, token, loadStyle]);
 
   // --- 自動採点 ---
   const handleAutoScore = useCallback(() => {
@@ -766,8 +810,29 @@ export default function AdminBlueprintsPage() {
                   <button type="button" onClick={() => setEditingStyleId(null)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">キャンセル</button>
                 </div>
               </div>
+            ) : creatingNewStyle ? (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold">文体を新規登録</h2>
+                {renderStyleForm(newStyleData, setNewStyleData, newStyleQuality, setNewStyleQuality)}
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleSaveNewStyle} className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm" disabled={loading || !newStyleData.archetype_name.trim()}>
+                    {loading ? "保存中..." : "登録"}
+                  </button>
+                  <button type="button" onClick={() => { setCreatingNewStyle(false); setNewStyleData(EMPTY_STYLE_DATA); setStyleViolations([]); setStyleWarnings([]); }} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">キャンセル</button>
+                </div>
+              </div>
             ) : (
               <>
+                <div className="flex justify-end mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setCreatingNewStyle(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                    disabled={!token}
+                  >
+                    + 新規登録
+                  </button>
+                </div>
                 {styleList.length === 0 && !loading && (
                   <div className="text-gray-400 text-sm">{token ? "「読み込み」ボタンを押してデータを取得してください。" : "サイドバーから認証してください。"}</div>
                 )}
