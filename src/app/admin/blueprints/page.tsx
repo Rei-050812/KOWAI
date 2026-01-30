@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { KaidanBlueprintData, StyleBlueprint, StyleBlueprintData, StyleViolation } from "@/types";
 import { scoreBlueprint, deductionsToWarnings } from "@/lib/blueprint-scoring";
+import { useAdminAuth } from "../AdminAuthContext";
 
 type Tab = "kaidan" | "style" | "create";
 
@@ -46,7 +47,7 @@ const DEFAULT_BLUEPRINT: KaidanBlueprintData = {
 };
 
 export default function AdminBlueprintsPage() {
-  const [token, setToken] = useState("");
+  const { token } = useAdminAuth();
   const [tab, setTab] = useState<Tab>("kaidan");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -627,18 +628,11 @@ export default function AdminBlueprintsPage() {
             >
               本文から変換
             </Link>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="ADMIN_TOKEN"
-              className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
-            />
             <button
               type="button"
               onClick={handleLoad}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
-              disabled={loading}
+              disabled={loading || !token}
             >
               {loading ? "読み込み中..." : "読み込み"}
             </button>
@@ -704,7 +698,7 @@ export default function AdminBlueprintsPage() {
         {tab === "kaidan" && (
           <div>
             {kaidanList.length === 0 && !loading && (
-              <div className="text-gray-400 text-sm">データがありません。読み込みボタンを押してください。</div>
+              <div className="text-gray-400 text-sm">{token ? "「読み込み」ボタンを押してデータを取得してください。" : "サイドバーから認証してください。"}</div>
             )}
             {kaidanList.length > 0 && (
               <table className="w-full text-sm">
@@ -772,7 +766,7 @@ export default function AdminBlueprintsPage() {
             ) : (
               <>
                 {styleList.length === 0 && !loading && (
-                  <div className="text-gray-400 text-sm">データがありません。読み込みボタンを押してください。</div>
+                  <div className="text-gray-400 text-sm">{token ? "「読み込み」ボタンを押してデータを取得してください。" : "サイドバーから認証してください。"}</div>
                 )}
                 {styleList.length > 0 && (
                   <table className="w-full text-sm">

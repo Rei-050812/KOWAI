@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAdminAuth } from "../AdminAuthContext";
 
 type QueueType = "priority" | "all" | "random";
 
@@ -46,7 +47,7 @@ const QUEUE_LABELS: Record<QueueType, string> = {
 };
 
 export default function AdminReviewsPage() {
-  const [token, setToken] = useState("");
+  const { token } = useAdminAuth();
   const [queueType, setQueueType] = useState<QueueType>("priority");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -206,23 +207,14 @@ export default function AdminReviewsPage() {
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">管理レビュー</h1>
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="ADMIN_TOKEN"
-              className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
-            />
-            <button
-              type="button"
-              onClick={handleLoad}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
-              disabled={loading}
-            >
-              {loading ? "読み込み中..." : "読み込み"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleLoad}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
+            disabled={loading || !token}
+          >
+            {loading ? "読み込み中..." : "読み込み"}
+          </button>
         </div>
 
         <div className="flex gap-2">
@@ -251,7 +243,9 @@ export default function AdminReviewsPage() {
         )}
 
         {total === 0 && !loading && (
-          <div className="text-sm text-gray-400">表示する項目がありません。</div>
+          <div className="text-sm text-gray-400">
+            {token ? "「読み込み」ボタンを押してデータを取得してください。" : "サイドバーから認証してください。"}
+          </div>
         )}
 
         {currentItem && (
