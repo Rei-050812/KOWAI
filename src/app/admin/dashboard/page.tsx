@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useAdminAuth } from "../AdminAuthContext";
 
 type DashboardData = {
   stories: { total: number; thisWeek: number; thisMonth: number };
@@ -84,7 +85,7 @@ function RatingBar({
 }
 
 export default function AdminDashboardPage() {
-  const [token, setToken] = useState("");
+  const { token } = useAdminAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -130,23 +131,14 @@ export default function AdminDashboardPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">統計ダッシュボード</h1>
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="ADMIN_TOKEN"
-              className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
-            />
-            <button
-              type="button"
-              onClick={handleLoad}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
-              disabled={loading}
-            >
-              {loading ? "読み込み中..." : "読み込み"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleLoad}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
+            disabled={loading || !token}
+          >
+            {loading ? "読み込み中..." : "読み込み"}
+          </button>
         </div>
 
         {/* Error */}
@@ -157,7 +149,7 @@ export default function AdminDashboardPage() {
         {/* No data placeholder */}
         {!data && !loading && !error && (
           <div className="text-sm text-gray-400">
-            トークンを入力して「データ読み込み」を押してください。
+            {token ? "「読み込み」ボタンを押してデータを取得してください。" : "サイドバーから認証してください。"}
           </div>
         )}
 

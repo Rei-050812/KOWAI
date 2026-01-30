@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { AdminAuthProvider, useAdminAuth } from "./AdminAuthContext";
 
 const NAV_ITEMS = [
   {
@@ -50,11 +51,93 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function AuthSection({ compact = false }: { compact?: boolean }) {
+  const { isAuthenticated, isValidating, validationError, validateAndSetToken, logout } = useAdminAuth();
+  const [inputValue, setInputValue] = useState("");
+  const [showInput, setShowInput] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = await validateAndSetToken(inputValue.trim());
+    if (success) {
+      setInputValue("");
+      setShowInput(false);
+    }
+  };
+
+  if (isAuthenticated) {
+    return (
+      <div className={`flex items-center justify-between ${compact ? "" : "px-3 py-2 bg-green-900/30 border border-green-800 rounded-lg"}`}>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          <span className="text-green-400 font-medium">認証済み</span>
+        </div>
+        <button
+          type="button"
+          onClick={logout}
+          className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+        >
+          ログアウト
+        </button>
+      </div>
+    );
+  }
+
+  if (showInput) {
+    return (
+      <form onSubmit={handleSubmit} className={`space-y-2 ${compact ? "" : "p-3 bg-gray-800 border border-orange-700/50 rounded-lg"}`}>
+        <input
+          type="password"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder="ADMIN_TOKEN"
+          className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm focus:border-red-500 focus:outline-none"
+          autoFocus
+          disabled={isValidating}
+        />
+        {validationError && (
+          <div className="text-xs text-red-400">{validationError}</div>
+        )}
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 rounded text-sm font-medium"
+            disabled={isValidating}
+          >
+            {isValidating ? "確認中..." : "認証"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowInput(false); setInputValue(""); }}
+            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+            disabled={isValidating}
+          >
+            ×
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setShowInput(true)}
+      className={`w-full flex items-center justify-center gap-2 ${
+        compact
+          ? "text-xs text-orange-400 hover:text-orange-300"
+          : "px-3 py-2.5 bg-orange-600/20 border border-orange-600/50 rounded-lg text-sm text-orange-400 hover:bg-orange-600/30 hover:border-orange-500 transition-all"
+      }`}
+    >
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+      </svg>
+      {compact ? "認証" : "認証が必要です"}
+    </button>
+  );
+}
+
+function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -71,6 +154,9 @@ export default function AdminLayout({
               Admin
             </span>
           </Link>
+        </div>
+        <div className="px-3 py-3 border-b border-gray-800">
+          <AuthSection />
         </div>
         <nav className="flex-1 px-2 py-3 space-y-0.5">
           {NAV_ITEMS.map(({ href, label, icon }) => (
@@ -154,6 +240,9 @@ export default function AdminLayout({
                   {label}
                 </Link>
               ))}
+              <div className="px-3 py-3 border-t border-gray-800 mt-2">
+                <AuthSection />
+              </div>
               <Link
                 href="/"
                 onClick={() => setMobileOpen(false)}
@@ -169,5 +258,17 @@ export default function AdminLayout({
         <main className="flex-1">{children}</main>
       </div>
     </div>
+  );
+}
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <AdminAuthProvider>
+      <AdminLayoutInner>{children}</AdminLayoutInner>
+    </AdminAuthProvider>
   );
 }
