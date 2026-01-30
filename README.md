@@ -326,6 +326,7 @@ KOWAI/
 │   │   │   ├── ranking/      # ランキングAPI
 │   │   │   └── stories/      # ストーリーAPI
 │   │   ├── admin/            # 管理画面
+│   │   │   ├── AdminAuthContext.tsx  # 認証状態の共有Context
 │   │   │   ├── blueprints/  # Blueprint統合管理（構造/文体/新規登録タブ）
 │   │   │   │   └── ingest/  # 本文→構造+文体の同時抽出
 │   │   │   ├── dashboard/   # 統計ダッシュボード
@@ -427,6 +428,16 @@ Blueprintは怪談の「構造的な怖さの設計図」です。入力され�
 5. Blueprintが0件 → 従来のプロンプトにフォールバック
 
 ### 管理画面
+
+#### 認証
+
+管理画面へのアクセスには `ADMIN_TOKEN` による認証が必要です。
+
+1. 管理画面（`/admin/dashboard` など）にアクセス
+2. サイドバー上部の「認証が必要です」ボタンをクリック
+3. `.env.local` に設定した `ADMIN_TOKEN` を入力
+4. 認証が成功すると「認証済み」と表示され、全管理画面で共通利用可能
+5. ブラウザを閉じても認証状態は維持されます（ログアウトで解除）
 
 #### Blueprint統合管理（`/admin/blueprints`）
 
