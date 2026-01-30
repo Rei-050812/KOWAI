@@ -347,11 +347,14 @@ export default function AdminBlueprintsPage() {
         });
         const styleData = await styleRes.json();
         if (!styleRes.ok) {
-          if (styleData.violations) {
+          if (styleData.violations && styleData.violations.length > 0) {
             setStyleViolations(styleData.violations);
             setStyleWarnings(styleData.warnings || []);
+            const violationDetails = styleData.violations.map((v: { detail: string }) => v.detail).join(', ');
+            styleMsg = `（文体の保存に失敗: ${violationDetails}）`;
+          } else {
+            styleMsg = `（文体の保存に失敗: ${styleData.error}）`;
           }
-          styleMsg = `（文体の保存に失敗: ${styleData.error}）`;
         } else {
           styleMsg = ` + 文体「${createStyleData.archetype_name}」`;
         }
