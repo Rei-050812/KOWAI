@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import Link from "next/link";
+import { useCallback, useState, useEffect } from "react";
 import { KaidanBlueprintData, StyleBlueprint, StyleBlueprintData, StyleViolation } from "@/types";
 import { scoreBlueprint, deductionsToWarnings } from "@/lib/blueprint-scoring";
 import { useAdminAuth } from "../AdminAuthContext";
 
-type Tab = "kaidan" | "style" | "create";
+type Tab = "kaidan" | "style";
 
 type KaidanBlueprintRow = {
   id: number;
@@ -59,24 +58,9 @@ export default function AdminBlueprintsPage() {
   // StyleBlueprint一覧
   const [styleList, setStyleList] = useState<StyleBlueprint[]>([]);
 
-  // 新規作成フォーム
-  const [createTitle, setCreateTitle] = useState("");
-  const [createTags, setCreateTags] = useState("");
-  const [createBlueprintJson, setCreateBlueprintJson] = useState(
-    JSON.stringify(DEFAULT_BLUEPRINT, null, 2)
-  );
-  const [createQualityScore, setCreateQualityScore] = useState(100);
-  const [createKaidanWarnings, setCreateKaidanWarnings] = useState<
-    { field: string; message: string; severity: string; deduction: number }[]
-  >([]);
-
-  // StyleBlueprint新規作成
-  const [createStyleData, setCreateStyleData] =
-    useState<StyleBlueprintData>(EMPTY_STYLE_DATA);
-  const [createStyleQuality, setCreateStyleQuality] = useState(70);
+  // StyleBlueprintバリデーション
   const [styleViolations, setStyleViolations] = useState<StyleViolation[]>([]);
   const [styleWarnings, setStyleWarnings] = useState<StyleViolation[]>([]);
-  const [includeStyle, setIncludeStyle] = useState(false);
 
   // StyleBlueprint編集
   const [editingStyleId, setEditingStyleId] = useState<number | null>(null);
@@ -89,8 +73,15 @@ export default function AdminBlueprintsPage() {
   const [newStyleData, setNewStyleData] = useState<StyleBlueprintData>(EMPTY_STYLE_DATA);
   const [newStyleQuality, setNewStyleQuality] = useState(70);
 
-  // sessionStorageからの一時Blueprint
-  const [hasTempBlueprint, setHasTempBlueprint] = useState(false);
+  // KaidanBlueprint新規作成（単体）
+  const [creatingNewKaidan, setCreatingNewKaidan] = useState(false);
+  const [newKaidanTitle, setNewKaidanTitle] = useState("");
+  const [newKaidanTags, setNewKaidanTags] = useState("");
+  const [newKaidanJson, setNewKaidanJson] = useState(JSON.stringify(DEFAULT_BLUEPRINT, null, 2));
+  const [newKaidanScore, setNewKaidanScore] = useState(100);
+  const [newKaidanWarnings, setNewKaidanWarnings] = useState<
+    { field: string; message: string; severity: string; deduction: number }[]
+  >([]);
 
   // --- データ読み込み ---
   const loadKaidan = useCallback(async () => {
@@ -132,48 +123,12 @@ export default function AdminBlueprintsPage() {
     else if (tab === "style") loadStyle();
   }, [tab, loadKaidan, loadStyle]);
 
-  // --- 一時Blueprint読み込み ---
-  const handleLoadTemp = useCallback(() => {
-    try {
-      const storedBp = sessionStorage.getItem("kowai_temp_blueprint");
-      const storedTags = sessionStorage.getItem("kowai_temp_tags");
-      const storedStyle = sessionStorage.getItem("kowai_temp_style");
-
-      if (storedBp) {
-        setCreateBlueprintJson(storedBp);
-        if (storedTags) {
-          const tags = JSON.parse(storedTags) as string[];
-          setCreateTags(tags.join(", "));
-        }
-        sessionStorage.removeItem("kowai_temp_blueprint");
-        sessionStorage.removeItem("kowai_temp_tags");
-      }
-
-      if (storedStyle) {
-        const style = JSON.parse(storedStyle) as StyleBlueprintData;
-        setCreateStyleData(style);
-        setIncludeStyle(true);
-        sessionStorage.removeItem("kowai_temp_style");
-      }
-
-      setHasTempBlueprint(false);
-      setTab("create");
-      setSuccess("変換データを読み込みました");
-      setTimeout(() => setSuccess(null), 3000);
-    } catch {
-      setError("一時データの読み込みに失敗しました");
+  // ログイン時・タブ切り替え時に自動読み込み
+  useEffect(() => {
+    if (token) {
+      handleLoad();
     }
-  }, []);
-
-  // マウント時に一時Blueprintチェック
-  useState(() => {
-    try {
-      const stored = sessionStorage.getItem("kowai_temp_blueprint");
-      if (stored) setHasTempBlueprint(true);
-    } catch {
-      // ignore
-    }
-  });
+  }, [token, tab, handleLoad]);
 
   // --- KaidanBlueprint操作 ---
   const handleDeleteKaidan = useCallback(
@@ -337,99 +292,57 @@ export default function AdminBlueprintsPage() {
     }
   }, [newStyleData, newStyleQuality, token, loadStyle]);
 
-  // --- 自動採点 ---
-  const handleAutoScore = useCallback(() => {
-    try {
-      const bp = JSON.parse(createBlueprintJson) as KaidanBlueprintData;
-      const result = scoreBlueprint(bp);
-      setCreateQualityScore(result.score);
-      setCreateKaidanWarnings(deductionsToWarnings(result.deductions));
-      setSuccess(`採点完了: ${result.score}点`);
-      setTimeout(() => setSuccess(null), 2000);
-    } catch {
-      setError("JSONの形式が不正です");
-      setCreateQualityScore(0);
-    }
-  }, [createBlueprintJson]);
-
-  // --- 新規保存 ---
-  const handleCreate = useCallback(async () => {
+  // --- KaidanBlueprint単体の新規保存 ---
+  const handleSaveNewKaidan = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // KaidanBlueprint保存
-      const blueprint = JSON.parse(createBlueprintJson);
-      const kaidanRes = await fetch("/api/blueprints/save", {
+      const blueprint = JSON.parse(newKaidanJson);
+      const res = await fetch("/api/blueprints/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: createTitle,
-          tags: createTags
+          title: newKaidanTitle,
+          tags: newKaidanTags
             .split(",")
             .map((t) => t.trim())
             .filter((t) => t),
           blueprint,
         }),
       });
-      const kaidanData = await kaidanRes.json();
-      if (!kaidanRes.ok) throw new Error(kaidanData.error || "Blueprint保存に失敗");
-
-      let styleMsg = "";
-
-      // StyleBlueprint保存（チェック時のみ）
-      if (includeStyle && createStyleData.archetype_name.trim()) {
-        const styleRes = await fetch("/api/admin/style-blueprints", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            styleData: createStyleData,
-            qualityScore: createStyleQuality,
-          }),
-        });
-        const styleData = await styleRes.json();
-        if (!styleRes.ok) {
-          if (styleData.violations && styleData.violations.length > 0) {
-            setStyleViolations(styleData.violations);
-            setStyleWarnings(styleData.warnings || []);
-            const violationDetails = styleData.violations.map((v: { detail: string }) => v.detail).join(', ');
-            styleMsg = `（文体の保存に失敗: ${violationDetails}）`;
-          } else {
-            styleMsg = `（文体の保存に失敗: ${styleData.error}）`;
-          }
-        } else {
-          styleMsg = ` + 文体「${createStyleData.archetype_name}」`;
-        }
-      }
-
-      setSuccess(
-        `保存完了 (ID: ${kaidanData.id}, スコア: ${kaidanData.quality_score})${styleMsg}`
-      );
-
-      // リセット
-      setCreateTitle("");
-      setCreateTags("");
-      setCreateBlueprintJson(JSON.stringify(DEFAULT_BLUEPRINT, null, 2));
-      setCreateQualityScore(100);
-      setCreateKaidanWarnings([]);
-      setCreateStyleData(EMPTY_STYLE_DATA);
-      setIncludeStyle(false);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "保存に失敗");
+      setCreatingNewKaidan(false);
+      setNewKaidanTitle("");
+      setNewKaidanTags("");
+      setNewKaidanJson(JSON.stringify(DEFAULT_BLUEPRINT, null, 2));
+      setNewKaidanScore(100);
+      setNewKaidanWarnings([]);
+      await loadKaidan();
+      setSuccess(`構造「${newKaidanTitle}」を登録しました（スコア: ${data.quality_score}）`);
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
+      setError(err instanceof Error ? err.message : "登録に失敗しました");
     } finally {
       setLoading(false);
     }
-  }, [
-    createTitle,
-    createTags,
-    createBlueprintJson,
-    includeStyle,
-    createStyleData,
-    createStyleQuality,
-    token,
-  ]);
+  }, [newKaidanTitle, newKaidanTags, newKaidanJson, loadKaidan]);
+
+  // --- KaidanBlueprint自動採点（新規登録フォーム用） ---
+  const handleAutoScoreNewKaidan = useCallback(() => {
+    try {
+      const bp = JSON.parse(newKaidanJson) as KaidanBlueprintData;
+      const result = scoreBlueprint(bp);
+      setNewKaidanScore(result.score);
+      setNewKaidanWarnings(deductionsToWarnings(result.deductions));
+      setSuccess(`採点完了: ${result.score}点`);
+      setTimeout(() => setSuccess(null), 2000);
+    } catch {
+      setError("JSONの形式が不正です");
+      setNewKaidanScore(0);
+    }
+  }, [newKaidanJson]);
+
 
   // --- StyleBlueprint配列フィールド操作 ---
   const updateStyleArray = (
@@ -668,60 +581,17 @@ export default function AdminBlueprintsPage() {
         {/* ヘッダー */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Blueprint 管理</h1>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/admin/blueprints/ingest"
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm"
-            >
-              本文から変換
-            </Link>
-            <button
-              type="button"
-              onClick={handleLoad}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
-              disabled={loading || !token}
-            >
-              {loading ? "読み込み中..." : "読み込み"}
-            </button>
-          </div>
         </div>
 
         {/* メッセージ */}
         {error && <div className="p-3 bg-red-900/40 text-red-300 rounded">{error}</div>}
         {success && <div className="p-3 bg-green-900/40 text-green-300 rounded">{success}</div>}
 
-        {/* 一時Blueprint通知 */}
-        {hasTempBlueprint && (
-          <div className="p-4 bg-blue-900/50 border border-blue-600 rounded-lg">
-            <p className="text-blue-300 text-sm mb-3">
-              変換画面から送られたデータがあります
-            </p>
-            <div className="flex gap-3">
-              <button type="button" onClick={handleLoadTemp} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">
-                フォームに読み込む
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  sessionStorage.removeItem("kowai_temp_blueprint");
-                  sessionStorage.removeItem("kowai_temp_tags");
-                  sessionStorage.removeItem("kowai_temp_style");
-                  setHasTempBlueprint(false);
-                }}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm"
-              >
-                破棄する
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* タブ */}
         <div className="flex gap-2 border-b border-gray-700 pb-2">
           {([
             ["kaidan", "構造（KaidanBlueprint）"],
             ["style", "文体（StyleBlueprint）"],
-            ["create", "新規登録"],
           ] as [Tab, string][]).map(([key, label]) => (
             <button
               key={key}
@@ -744,56 +614,152 @@ export default function AdminBlueprintsPage() {
         {/* === 構造タブ === */}
         {tab === "kaidan" && (
           <div>
-            {kaidanList.length === 0 && !loading && (
-              <div className="text-gray-400 text-sm">{token ? "「読み込み」ボタンを押してデータを取得してください。" : "サイドバーから認証してください。"}</div>
-            )}
-            {kaidanList.length > 0 && (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-700 text-left">
-                    <th className="py-2 px-3">ID</th>
-                    <th className="py-2 px-3">タイトル</th>
-                    <th className="py-2 px-3">タグ</th>
-                    <th className="py-2 px-3">品質</th>
-                    <th className="py-2 px-3">登録日</th>
-                    <th className="py-2 px-3">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {kaidanList.map((bp) => (
-                    <tr key={bp.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                      <td className="py-2 px-3 text-gray-400">{bp.id}</td>
-                      <td className="py-2 px-3">{bp.title}</td>
-                      <td className="py-2 px-3">
-                        <div className="flex flex-wrap gap-1">
-                          {bp.tags.map((t, i) => (
-                            <span key={i} className="px-2 py-0.5 bg-gray-800 rounded text-xs text-gray-300">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-2 px-3">
-                        <span className={bp.quality_score >= 70 ? "text-green-400" : bp.quality_score >= 50 ? "text-yellow-400" : "text-red-400"}>
-                          {bp.quality_score}
+            {creatingNewKaidan ? (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold">構造を新規登録</h2>
+                <div className="border border-gray-700 rounded-lg p-4 bg-gray-900/50 space-y-4">
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-1">タイトル *</label>
+                    <input
+                      type="text"
+                      value={newKaidanTitle}
+                      onChange={(e) => setNewKaidanTitle(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+                      placeholder="例: 鏡の向こう側パターン"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-1">タグ（カンマ区切り）</label>
+                    <input
+                      type="text"
+                      value={newKaidanTags}
+                      onChange={(e) => setNewKaidanTags(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+                      placeholder="例: 鏡, 目撃系, 心霊"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-sm text-gray-300">Blueprint JSON *</label>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-bold ${newKaidanScore >= 70 ? "text-green-400" : newKaidanScore >= 50 ? "text-yellow-400" : "text-red-400"}`}>
+                          {newKaidanScore}点
                         </span>
-                      </td>
-                      <td className="py-2 px-3 text-gray-400 text-xs">
-                        {new Date(bp.created_at).toLocaleDateString("ja-JP")}
-                      </td>
-                      <td className="py-2 px-3">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteKaidan(bp.id, bp.title)}
-                          className="text-red-400 hover:text-red-300 text-xs"
-                        >
-                          削除
+                        <button type="button" onClick={handleAutoScoreNewKaidan} className="text-xs px-3 py-1 bg-yellow-700 hover:bg-yellow-600 rounded">
+                          自動採点
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                    <textarea
+                      value={newKaidanJson}
+                      onChange={(e) => setNewKaidanJson(e.target.value)}
+                      rows={14}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded font-mono text-sm"
+                    />
+                  </div>
+
+                  {newKaidanWarnings.length > 0 && (
+                    <div className="space-y-1">
+                      {newKaidanWarnings.map((w, i) => (
+                        <div key={i} className={`p-2 rounded text-sm ${w.severity === "error" ? "bg-red-900/50 text-red-300" : "bg-yellow-900/50 text-yellow-300"}`}>
+                          [{w.field}] {w.message} <span className="text-xs">(-{w.deduction}点)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveNewKaidan}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm"
+                    disabled={loading || !newKaidanTitle.trim()}
+                  >
+                    {loading ? "保存中..." : "登録"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreatingNewKaidan(false);
+                      setNewKaidanTitle("");
+                      setNewKaidanTags("");
+                      setNewKaidanJson(JSON.stringify(DEFAULT_BLUEPRINT, null, 2));
+                      setNewKaidanScore(100);
+                      setNewKaidanWarnings([]);
+                    }}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-end mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setCreatingNewKaidan(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                    disabled={!token}
+                  >
+                    + 新規登録
+                  </button>
+                </div>
+                {kaidanList.length === 0 && !loading && (
+                  <div className="text-gray-400 text-sm">{token ? "「読み込み」ボタンを押してデータを取得してください。" : "サイドバーから認証してください。"}</div>
+                )}
+                {kaidanList.length > 0 && (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-700 text-left">
+                        <th className="py-2 px-3">ID</th>
+                        <th className="py-2 px-3">タイトル</th>
+                        <th className="py-2 px-3">タグ</th>
+                        <th className="py-2 px-3">品質</th>
+                        <th className="py-2 px-3">登録日</th>
+                        <th className="py-2 px-3">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kaidanList.map((bp) => (
+                        <tr key={bp.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                          <td className="py-2 px-3 text-gray-400">{bp.id}</td>
+                          <td className="py-2 px-3">{bp.title}</td>
+                          <td className="py-2 px-3">
+                            <div className="flex flex-wrap gap-1">
+                              {bp.tags.map((t, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-gray-800 rounded text-xs text-gray-300">
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={bp.quality_score >= 70 ? "text-green-400" : bp.quality_score >= 50 ? "text-yellow-400" : "text-red-400"}>
+                              {bp.quality_score}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-gray-400 text-xs">
+                            {new Date(bp.created_at).toLocaleDateString("ja-JP")}
+                          </td>
+                          <td className="py-2 px-3">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteKaidan(bp.id, bp.title)}
+                              className="text-red-400 hover:text-red-300 text-xs"
+                            >
+                              削除
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
             )}
           </div>
         )}
@@ -885,96 +851,6 @@ export default function AdminBlueprintsPage() {
           </div>
         )}
 
-        {/* === 新規登録タブ === */}
-        {tab === "create" && (
-          <div className="space-y-6">
-            {/* KaidanBlueprint */}
-            <div className="border border-gray-700 rounded-lg p-4 bg-gray-900/50 space-y-4">
-              <h3 className="text-base font-semibold text-red-400">構造（KaidanBlueprint）</h3>
-
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">タイトル *</label>
-                <input
-                  type="text"
-                  value={createTitle}
-                  onChange={(e) => setCreateTitle(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
-                  placeholder="例: 鏡の向こう側パターン"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">タグ（カンマ区切り）</label>
-                <input
-                  type="text"
-                  value={createTags}
-                  onChange={(e) => setCreateTags(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
-                  placeholder="例: 鏡, 目撃系, 心霊"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-sm text-gray-300">Blueprint JSON *</label>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold ${createQualityScore >= 70 ? "text-green-400" : createQualityScore >= 50 ? "text-yellow-400" : "text-red-400"}`}>
-                      {createQualityScore}点
-                    </span>
-                    <button type="button" onClick={handleAutoScore} className="text-xs px-3 py-1 bg-yellow-700 hover:bg-yellow-600 rounded">
-                      自動採点
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={createBlueprintJson}
-                  onChange={(e) => setCreateBlueprintJson(e.target.value)}
-                  rows={14}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded font-mono text-sm"
-                />
-              </div>
-
-              {createKaidanWarnings.length > 0 && (
-                <div className="space-y-1">
-                  {createKaidanWarnings.map((w, i) => (
-                    <div key={i} className={`p-2 rounded text-sm ${w.severity === "error" ? "bg-red-900/50 text-red-300" : "bg-yellow-900/50 text-yellow-300"}`}>
-                      [{w.field}] {w.message} <span className="text-xs">(-{w.deduction}点)</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* StyleBlueprint追加トグル */}
-            <label className="flex items-center gap-3 text-sm text-gray-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeStyle}
-                onChange={(e) => setIncludeStyle(e.target.checked)}
-                className="accent-blue-500"
-              />
-              文体（StyleBlueprint）も一緒に登録する
-            </label>
-
-            {includeStyle &&
-              renderStyleForm(
-                createStyleData,
-                setCreateStyleData,
-                createStyleQuality,
-                setCreateStyleQuality
-              )}
-
-            {/* 保存ボタン */}
-            <button
-              type="button"
-              onClick={handleCreate}
-              disabled={loading || !createTitle.trim()}
-              className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 rounded-lg font-medium"
-            >
-              {loading ? "保存中..." : `保存${includeStyle ? "（構造 + 文体）" : "（構造のみ）"}`}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

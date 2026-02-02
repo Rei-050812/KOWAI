@@ -1,25 +1,39 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { KaidanBlueprintData, StyleBlueprintData } from "@/types";
+import { useAdminAuth } from "../../AdminAuthContext";
 
 const MAX_CHARS_NORMAL = 8000;
 const LONG_TEXT_THRESHOLD = 10000;
 const MAX_CHARS_ABSOLUTE = 50000;
 
-const BLUEPRINT_STORAGE_KEY = "kowai_temp_blueprint";
-const TAGS_STORAGE_KEY = "kowai_temp_tags";
-const STYLE_STORAGE_KEY = "kowai_temp_style";
+/**
+ * 既存の流派名と被らないユニークな名前を生成
+ */
+function makeUniqueStyleName(baseName: string, existingNames: string[]): string {
+  if (!existingNames.includes(baseName)) {
+    return baseName;
+  }
+
+  // 番号付きで試す
+  let counter = 2;
+  while (existingNames.includes(`${baseName} (${counter})`)) {
+    counter++;
+  }
+  return `${baseName} (${counter})`;
+}
 
 export default function AdminIngestPage() {
   const router = useRouter();
+  const { token } = useAdminAuth();
   const [sourceText, setSourceText] = useState("");
   const [blueprint, setBlueprint] = useState<KaidanBlueprintData | null>(null);
   const [styleData, setStyleData] = useState<StyleBlueprintData | null>(null);
   const [extractedTags, setExtractedTags] = useState<string[]>([]);
   const [status, setStatus] = useState<{
-    type: "idle" | "loading" | "success" | "error";
+    type: "idle" | "loading" | "success" | "error" | "saving";
     message: string;
   }>({ type: "idle", message: "" });
   const [processingInfo, setProcessingInfo] = useState<{
@@ -27,9 +41,41 @@ export default function AdminIngestPage() {
     chunks: number;
   } | null>(null);
 
+  // 登録用フォーム（構造）
+  const [registerTitle, setRegisterTitle] = useState("");
+  const [registerTags, setRegisterTags] = useState("");
+
+  // 登録用フォーム（文体）
+  const [registerStyleName, setRegisterStyleName] = useState("");
+
+  // 既存の流派名一覧（重複チェック用）
+  const [existingStyleNames, setExistingStyleNames] = useState<string[]>([]);
+
   const charCount = sourceText.length;
   const isLongMode = charCount >= LONG_TEXT_THRESHOLD;
   const isOverLimit = charCount > MAX_CHARS_ABSOLUTE;
+
+  // ログイン時に既存の流派名を取得
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchStyleNames = async () => {
+      try {
+        const res = await fetch("/api/admin/style-blueprints", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const names = (data.blueprints || []).map((bp: { archetype_name: string }) => bp.archetype_name);
+          setExistingStyleNames(names);
+        }
+      } catch {
+        // エラーは無視（重複チェックができないだけ）
+      }
+    };
+
+    fetchStyleNames();
+  }, [token]);
 
   const handleClearText = useCallback(() => {
     setSourceText("");
@@ -38,6 +84,9 @@ export default function AdminIngestPage() {
     setExtractedTags([]);
     setProcessingInfo(null);
     setStatus({ type: "idle", message: "" });
+    setRegisterTitle("");
+    setRegisterTags("");
+    setRegisterStyleName("");
   }, []);
 
   const handleExtract = async () => {
@@ -60,7 +109,10 @@ export default function AdminIngestPage() {
       const response = await fetch("/api/blueprints/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_text: sourceText }),
+        body: JSON.stringify({
+          source_text: sourceText,
+          existing_style_names: existingStyleNames,
+        }),
       });
 
       const data = await response.json();
@@ -72,6 +124,11 @@ export default function AdminIngestPage() {
       setExtractedTags(data.tags || []);
       setStyleData(data.styleData || null);
       setProcessingInfo({ mode: data.mode, chunks: data.chunks });
+      // 文体が抽出された場合、流派名を初期値としてセット（既存と被らないようにする）
+      if (data.styleData?.archetype_name) {
+        const uniqueName = makeUniqueStyleName(data.styleData.archetype_name, existingStyleNames);
+        setRegisterStyleName(uniqueName);
+      }
       setStatus({
         type: "success",
         message: `変換完了${data.styleData ? "（構造 + 文体）" : "（構造のみ）"}`,
@@ -84,18 +141,77 @@ export default function AdminIngestPage() {
     }
   };
 
-  const handleSendToBlueprints = () => {
-    if (!blueprint) return;
+  // 抽出結果をそのまま登録
+  const handleRegister = async () => {
+    if (!blueprint || !registerTitle.trim()) return;
+
+    setStatus({ type: "saving", message: "保存中..." });
 
     try {
-      sessionStorage.setItem(BLUEPRINT_STORAGE_KEY, JSON.stringify(blueprint, null, 2));
-      sessionStorage.setItem(TAGS_STORAGE_KEY, JSON.stringify(extractedTags));
-      if (styleData) {
-        sessionStorage.setItem(STYLE_STORAGE_KEY, JSON.stringify(styleData));
+      // 構造Blueprintを保存
+      const tags = registerTags
+        ? registerTags.split(",").map((t) => t.trim()).filter((t) => t)
+        : extractedTags;
+
+      const kaidanRes = await fetch("/api/blueprints/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: registerTitle,
+          tags,
+          blueprint,
+        }),
+      });
+      const kaidanData = await kaidanRes.json();
+      if (!kaidanRes.ok) {
+        throw new Error(kaidanData.error || "構造Blueprintの保存に失敗");
       }
-      router.push("/admin/blueprints");
-    } catch {
-      setStatus({ type: "error", message: "一時保存に失敗しました" });
+
+      let styleMsg = "";
+
+      // 文体Blueprintも保存
+      if (styleData && registerStyleName.trim()) {
+        // 編集された流派名を使用
+        const finalStyleData = {
+          ...styleData,
+          archetype_name: registerStyleName.trim(),
+        };
+        const styleRes = await fetch("/api/admin/style-blueprints", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            styleData: finalStyleData,
+            qualityScore: 70,
+          }),
+        });
+        const styleResult = await styleRes.json();
+        if (!styleRes.ok) {
+          const detail = styleResult.violations
+            ? styleResult.violations.map((v: { detail: string }) => v.detail).join(", ")
+            : styleResult.error;
+          styleMsg = `（文体の保存に失敗: ${detail}）`;
+        } else {
+          styleMsg = ` + 文体「${registerStyleName}」`;
+        }
+      }
+
+      setStatus({
+        type: "success",
+        message: `登録完了！ 構造ID: ${kaidanData.id}（スコア: ${kaidanData.quality_score}）${styleMsg}`,
+      });
+
+      // 少し待ってから管理画面へ遷移
+      setTimeout(() => {
+        router.push("/admin/blueprints");
+      }, 2000);
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: error instanceof Error ? error.message : "登録に失敗しました",
+      });
     }
   };
 
@@ -284,6 +400,17 @@ export default function AdminIngestPage() {
                     </div>
                   </div>
 
+                  {styleData.style_prohibitions.length > 0 && (
+                    <div>
+                      <span className="text-gray-400 text-sm">禁止事項:</span>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {styleData.style_prohibitions.map((p, i) => (
+                          <span key={i} className="px-2 py-1 bg-gray-700 rounded text-xs">{p}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {styleData.sample_phrases.length > 0 && (
                     <div>
                       <span className="text-gray-400 text-sm">サンプルフレーズ:</span>
@@ -302,14 +429,75 @@ export default function AdminIngestPage() {
               </div>
             )}
 
-            {/* アクション */}
-            <div className="flex gap-4">
-              <button
-                onClick={handleSendToBlueprints}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
-              >
-                Blueprint管理画面へ送る{styleData ? "（構造 + 文体）" : ""} →
-              </button>
+            {/* 登録フォーム */}
+            <div className="p-4 bg-gray-800 border border-green-700 rounded-lg space-y-4">
+              <h3 className="text-lg font-bold text-green-400">このまま登録</h3>
+
+              {/* 構造用 */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-red-400">構造（KaidanBlueprint）</h4>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">タイトル *</label>
+                  <input
+                    type="text"
+                    value={registerTitle}
+                    onChange={(e) => setRegisterTitle(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:outline-none focus:border-green-500"
+                    placeholder="例: 鏡の向こう側パターン"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">
+                    タグ（カンマ区切り / 空欄なら抽出タグを使用）
+                  </label>
+                  <input
+                    type="text"
+                    value={registerTags}
+                    onChange={(e) => setRegisterTags(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:outline-none focus:border-green-500"
+                    placeholder={extractedTags.join(", ") || "例: 鏡, 目撃系, 心霊"}
+                  />
+                </div>
+              </div>
+
+              {/* 文体用 */}
+              {styleData && (
+                <div className="space-y-3 pt-3 border-t border-gray-700">
+                  <h4 className="text-sm font-medium text-blue-400">文体（StyleBlueprint）</h4>
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-1">流派名 *</label>
+                    <input
+                      type="text"
+                      value={registerStyleName}
+                      onChange={(e) => setRegisterStyleName(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:outline-none focus:border-blue-500"
+                      placeholder="例: 実録調"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-2">
+                <button
+                  onClick={handleRegister}
+                  disabled={status.type === "saving" || !registerTitle.trim() || (styleData && !registerStyleName.trim()) || !token}
+                  className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-lg font-medium"
+                >
+                  {status.type === "saving" ? "保存中..." : `登録${styleData ? "（構造 + 文体）" : "（構造のみ）"}`}
+                </button>
+                <button
+                  onClick={() => router.push("/admin/blueprints")}
+                  className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium"
+                >
+                  管理画面へ
+                </button>
+              </div>
+
+              {!token && (
+                <p className="text-yellow-400 text-sm">
+                  ※ 登録するには管理画面で認証が必要です
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -321,8 +509,7 @@ export default function AdminIngestPage() {
             <li>怪談の本文を上のテキストエリアに貼り付けます</li>
             <li>「構造 + 文体を抽出」ボタンをクリックします</li>
             <li>AIが構造（KaidanBlueprint）と文体（StyleBlueprint）を同時に抽出します</li>
-            <li>結果を確認し「Blueprint管理画面へ送る」で管理画面に遷移します</li>
-            <li>管理画面でタイトルやタグを設定して保存します</li>
+            <li>結果を確認し、タイトルを入力して「登録」をクリックします</li>
           </ol>
         </div>
       </div>

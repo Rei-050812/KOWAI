@@ -105,6 +105,13 @@ export default function AdminReviewsPage() {
     }
   }, [queueType, token, resetForm]);
 
+  // ログイン時・キュー切り替え時に自動読み込み
+  useEffect(() => {
+    if (token) {
+      handleLoad();
+    }
+  }, [token, queueType, handleLoad]);
+
   const handleSaveCurrent = useCallback(async () => {
     if (!currentItem) return;
     setLoading(true);

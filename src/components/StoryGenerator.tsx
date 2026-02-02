@@ -14,7 +14,7 @@ export default function StoryGenerator({ onGenerate, isLoading }: StoryGenerator
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!word.trim() || isLoading) return;
+    if (isLoading) return;
     await onGenerate(word.trim(), selectedStyle);
   };
 
@@ -38,7 +38,7 @@ export default function StoryGenerator({ onGenerate, isLoading }: StoryGenerator
           disabled={isLoading}
         />
         <p className="text-sm text-horror-text-secondary tracking-wide">
-          ※ 1〜20文字の単語を入力してください
+          ※ 空欄なら「おまかせ」で生成します
         </p>
       </div>
 
@@ -69,7 +69,7 @@ export default function StoryGenerator({ onGenerate, isLoading }: StoryGenerator
       {/* 生成ボタン */}
       <button
         type="submit"
-        disabled={!word.trim() || isLoading}
+        disabled={isLoading}
         className="horror-button w-full text-xl py-5 flex items-center justify-center gap-4"
       >
         {isLoading ? (

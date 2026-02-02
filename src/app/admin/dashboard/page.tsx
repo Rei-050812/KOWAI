@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useAdminAuth } from "../AdminAuthContext";
 
 type DashboardData = {
@@ -110,6 +110,13 @@ export default function AdminDashboardPage() {
       setLoading(false);
     }
   }, [token]);
+
+  // ログイン時に自動読み込み
+  useEffect(() => {
+    if (token) {
+      handleLoad();
+    }
+  }, [token, handleLoad]);
 
   const maxRatingCount = data
     ? Math.max(

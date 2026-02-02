@@ -170,12 +170,26 @@ ${blueprintTexts}
 /**
  * D) 文体抽出用プロンプト：source_text -> StyleBlueprintData
  */
-function getStyleExtractionPrompt(text: string): string {
+function getStyleExtractionPrompt(text: string, existingNames: string[] = []): string {
+  const existingNamesSection = existingNames.length > 0
+    ? `
+
+【重要：流派名の命名ルール】
+以下の既存の流派名と被らない、かつ類似しない名前を付けてください。
+- 完全一致はもちろん、「〜風」「〜調」「〜型」などの接尾辞違いも避ける
+- 同じキーワードを使った名前も避ける（例：「回想録風」があれば「回想録調」も不可）
+- この文体の特徴を的確に表す、新しい独自の名前を創造してください
+
+既存の流派名一覧：
+${existingNames.map(n => `- ${n}`).join('\n')}`
+    : '';
+
   return `あなたは洒落怖（2ch系怪談）の文体分析専門家です。以下の怪談本文から「書き方の流派（StyleBlueprint）」を抽出してください。
 
 【目的】
 この分析結果は、同じ文体で新しい怪談を生成するためのスタイル指示書として使われます。
 そのため、具体的なストーリー内容ではなく「書き方の癖・方向性」を抽出してください。
+${existingNamesSection}
 
 【分析観点】
 1. 語り手の距離感：出来事をどの程度他人事として語っているか
@@ -447,7 +461,10 @@ function parseBlueprint(text: string): BlueprintWithTags {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { source_text } = body as { source_text: string };
+    const { source_text, existing_style_names } = body as {
+      source_text: string;
+      existing_style_names?: string[];
+    };
 
     // バリデーション（source_textの内容はログに出さない）
     if (!source_text || typeof source_text !== "string") {
@@ -507,7 +524,7 @@ export async function POST(request: NextRequest) {
     const styleSampleText = textLength >= LONG_TEXT_THRESHOLD
       ? extractRepresentativeSample(source_text)
       : source_text;
-    const stylePrompt = getStyleExtractionPrompt(styleSampleText);
+    const stylePrompt = getStyleExtractionPrompt(styleSampleText, existing_style_names || []);
     const styleData = await callClaudeForStyle(stylePrompt);
 
     // source_textを含めずにレスポンス
@@ -519,8 +536,12 @@ export async function POST(request: NextRequest) {
       chunks: textLength < LONG_TEXT_THRESHOLD ? 1 : splitTextIntoChunks(source_text).length,
     });
   } catch (error) {
+    // エラーログ出力（デバッグ用）
+    console.error("[Blueprint Extract Error]", error);
+
     // エラー時もsource_textを含めない
     if (error instanceof Anthropic.APIError) {
+      console.error("[Anthropic API Error]", error.status, error.message);
       if (error.status === 401) {
         return NextResponse.json(
           { error: "APIキーが無効です" },
@@ -533,6 +554,11 @@ export async function POST(request: NextRequest) {
           { status: 429 }
         );
       }
+      // その他のAPIエラー
+      return NextResponse.json(
+        { error: `API エラー: ${error.message}` },
+        { status: 500 }
+      );
     }
 
     if (error instanceof SyntaxError) {
@@ -542,8 +568,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 未知のエラー
+    const errorMessage = error instanceof Error ? error.message : "不明なエラー";
     return NextResponse.json(
-      { error: "Blueprint変換に失敗しました" },
+      { error: `Blueprint変換に失敗しました: ${errorMessage}` },
       { status: 500 }
     );
   }

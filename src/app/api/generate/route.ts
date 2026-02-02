@@ -143,6 +143,25 @@ interface ValidationStats {
 async function selectBlueprintWithFallback(
   word: string
 ): Promise<BlueprintSelectionResult> {
+  // 0. 単語が空の場合は直接ランダム選択（おまかせモード）
+  if (!word) {
+    try {
+      const randomBlueprint = await getRandomBlueprint(50);
+      if (randomBlueprint) {
+        console.log(
+          `[Blueprint] RANDOM(おまかせ): "${randomBlueprint.title}" (id=${randomBlueprint.id}, quality=${randomBlueprint.quality_score})`
+        );
+        return { blueprint: randomBlueprint, fallbackUsed: false, fallbackReason: "random" };
+      }
+    } catch (error) {
+      console.warn("[Blueprint] Random selection failed:", error);
+    }
+    // ランダムも失敗したら汎用Blueprint
+    const genericBlueprint = getGenericBlueprint();
+    console.log(`[Blueprint] GENERIC(おまかせ): using fallback blueprint`);
+    return { blueprint: genericBlueprint, fallbackUsed: true, fallbackReason: "generic" };
+  }
+
   // A. hit: 厳格な条件でマッチ
   try {
     const hitResults = await matchBlueprintsByKeyword(word, TOP_K, MIN_QUALITY_HIT);
@@ -730,11 +749,10 @@ function validateInput(
   word: unknown,
   style: unknown
 ): { valid: true; word: string; style: StoryStyle } | { valid: false; error: string } {
-  if (!word || typeof word !== "string") {
-    return { valid: false, error: "単語を入力してください" };
-  }
+  // 単語は任意（空文字列も許可）
+  const wordStr = typeof word === "string" ? word.trim() : "";
 
-  if (word.length > 20) {
+  if (wordStr.length > 20) {
     return { valid: false, error: "単語は20文字以内で入力してください" };
   }
 
@@ -743,7 +761,7 @@ function validateInput(
     return { valid: false, error: "無効なスタイルです" };
   }
 
-  return { valid: true, word, style: style as StoryStyle };
+  return { valid: true, word: wordStr, style: style as StoryStyle };
 }
 
 // =============================================
