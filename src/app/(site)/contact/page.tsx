@@ -5,7 +5,6 @@ import { useState } from "react";
 export default function ContactPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -20,7 +19,7 @@ export default function ContactPage() {
       const response = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, subject, message }),
+        body: JSON.stringify({ name, email, message }),
       });
 
       if (!response.ok) {
@@ -119,21 +118,6 @@ export default function ContactPage() {
                 required
                 className="horror-input"
                 placeholder="example@email.com"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="subject" className="block text-sm font-medium text-horror-text mb-2">
-                件名 <span className="text-horror-crimson">*</span>
-              </label>
-              <input
-                type="text"
-                id="subject"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                required
-                className="horror-input"
-                placeholder="お問い合わせの件名"
               />
             </div>
 

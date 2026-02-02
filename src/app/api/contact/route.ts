@@ -3,10 +3,10 @@ import { supabase } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
-    const { name, email, subject, message } = await request.json();
+    const { name, email, message } = await request.json();
 
     // バリデーション
-    if (!name || !email || !subject || !message) {
+    if (!name || !email || !message) {
       return NextResponse.json(
         { error: "すべての項目を入力してください" },
         { status: 400 }
@@ -23,13 +23,6 @@ export async function POST(request: Request) {
     if (email.length > 255) {
       return NextResponse.json(
         { error: "メールアドレスは255文字以内で入力してください" },
-        { status: 400 }
-      );
-    }
-
-    if (subject.length > 200) {
-      return NextResponse.json(
-        { error: "件名は200文字以内で入力してください" },
         { status: 400 }
       );
     }
@@ -56,7 +49,6 @@ export async function POST(request: Request) {
       .insert({
         name,
         email,
-        subject,
         message,
       });
 
