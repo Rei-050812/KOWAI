@@ -47,7 +47,7 @@ const MODEL = "claude-sonnet-4-20250514";
 const MIN_QUALITY_HIT = 70;
 const MIN_QUALITY_NEAR = 30;
 const TOP_K = 1;
-const MAX_RETRY = 2;
+const MAX_RETRY = 1; // 高速化のため削減
 
 const GENERATION_CONFIG: GenerationConfig = {
   topK: TOP_K,
@@ -394,7 +394,7 @@ async function executeThreePhaseGeneration(
   // 対策1: Phase A は必ず「上書き」する（append/push/concat 禁止）
   let phaseAText = '';
   let phaseAPrompt = '';
-  const MAX_PHASE_A_VALIDATION_RETRY = 2;
+  const MAX_PHASE_A_VALIDATION_RETRY = 1; // 高速化のため削減
 
   phaseAGenerationLoop:
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_A_VALIDATION_RETRY; validationAttempt++) {
@@ -451,7 +451,7 @@ async function executeThreePhaseGeneration(
   // styleHint を Phase B に注入（Phase A には適用しない）
   const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word, vocabCooldownHint + styleHint);
   let phaseBText = '';
-  const MAX_PHASE_B_VALIDATION_RETRY = 2;
+  const MAX_PHASE_B_VALIDATION_RETRY = 1; // 高速化のため削減
 
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_B_VALIDATION_RETRY; validationAttempt++) {
     console.log(`[Phase B] generating disturbance... (validation attempt ${validationAttempt + 1})`);
@@ -525,7 +525,7 @@ async function executeThreePhaseGeneration(
   const combinedAB = `${phaseAText}\n\n${phaseBText}`;
   let phaseCText = '';
   let phaseCPrompt = '';
-  const MAX_PHASE_C_VALIDATION_RETRY = 2;
+  const MAX_PHASE_C_VALIDATION_RETRY = 1; // 高速化のため削減
 
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_C_VALIDATION_RETRY; validationAttempt++) {
     phaseCPrompt = buildPhaseCPrompt(bp.irreversible_point, style, combinedAB, endingMode, word, vocabCooldownHint + styleHint);
