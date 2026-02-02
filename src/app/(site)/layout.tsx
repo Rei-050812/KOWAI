@@ -23,6 +23,17 @@ export default function SiteLayout({
       <main className="flex-1 py-12">{children}</main>
       <footer className="border-t border-horror-blood/40 bg-horror-dark/60 py-8 mt-16">
         <div className="container mx-auto px-6 text-center text-horror-text-secondary text-sm">
+          <div className="flex justify-center gap-6 mb-4">
+            <a href="/terms" className="hover:text-horror-text transition-colors">
+              利用規約
+            </a>
+            <a href="/privacy" className="hover:text-horror-text transition-colors">
+              プライバシーポリシー
+            </a>
+            <a href="/contact" className="hover:text-horror-text transition-colors">
+              お問い合わせ
+            </a>
+          </div>
           <p className="tracking-wider">
             &copy; 2026 KOWAI. All rights reserved.
           </p>
