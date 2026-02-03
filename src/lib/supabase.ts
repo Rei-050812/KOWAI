@@ -799,6 +799,7 @@ export interface StoredStoryMeta {
   setting: string;
   cast: string;
   flow: string;
+  notableNouns?: string[];
 }
 
 /**

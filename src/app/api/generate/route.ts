@@ -810,6 +810,7 @@ export async function POST(request: NextRequest) {
         setting: m.setting as StoryMeta['setting'],
         cast: m.cast as StoryMeta['cast'],
         flow: m.flow as StoryMeta['flow'],
+        notableNouns: m.notableNouns || [],
       }));
     } catch (error) {
       console.warn("[Diversity] Failed to fetch recent metas:", error);
