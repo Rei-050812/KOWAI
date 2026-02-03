@@ -337,7 +337,7 @@ async function executeThreePhaseGeneration(
       const badExcerpts = await getLowRatedStoryExcerpts(styleBlueprint.id, 2, 2);
       if (badExcerpts.length > 0) {
         console.log(`[StyleBlueprint] Found ${badExcerpts.length} low-rated examples to avoid`);
-        styleHint += `\n\n【避けるべき表現例】以下は過去に低評価だった文章の例です。このような書き方は避けてください：\n${badExcerpts.map((ex, i) => `例${i + 1}: 「${ex}」`).join('\n')}`;
+        styleHint += `\n\n【避けるべき表現例】以下は過去に低評価だった文章の抜粋（冒頭・中盤・終盤）です。同様の表現パターンは避けてください：\n${badExcerpts.map((ex, i) => `悪例${i + 1}: 「${ex}」`).join('\n')}`;
       }
     } catch (error) {
       console.warn("[StyleBlueprint] Failed to fetch low-rated excerpts:", error);

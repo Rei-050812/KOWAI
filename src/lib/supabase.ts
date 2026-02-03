@@ -1016,13 +1016,30 @@ export async function getLowRatedStoryExcerpts(
     return [];
   }
 
-  // ストーリーから抜粋を取得（最初の200文字程度）
+  // ストーリーから複数箇所の抜粋を取得（冒頭・中盤・終盤）
   return storyData
     .map((row) => {
       const story = row.story;
-      if (!story) return null;
-      // 最初の200文字を抜粋
-      return story.slice(0, 200) + (story.length > 200 ? "..." : "");
+      if (!story || story.length < 100) return null;
+
+      const excerpts: string[] = [];
+      const excerptLen = 100;
+
+      // 冒頭100文字
+      excerpts.push(story.slice(0, excerptLen));
+
+      // 中盤100文字（全体の40-60%あたり）
+      if (story.length > excerptLen * 2) {
+        const midStart = Math.floor(story.length * 0.4);
+        excerpts.push(story.slice(midStart, midStart + excerptLen));
+      }
+
+      // 終盤100文字（最後から100文字）
+      if (story.length > excerptLen * 3) {
+        excerpts.push(story.slice(-excerptLen));
+      }
+
+      return excerpts.join(" ... ");
     })
     .filter((excerpt): excerpt is string => excerpt !== null);
 }
