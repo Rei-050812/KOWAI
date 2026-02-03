@@ -490,6 +490,7 @@ irreversible_point:
  * Phase A用プロンプトを生成
  * @param diversityHint 多様性確保のためのヒント（オプション）
  * @param vocabCooldownHint 語彙クールダウンのヒント（オプション）
+ * @param styleHint StyleBlueprintのスタイルヒント（オプション）
  */
 export function buildPhaseAPrompt(
   normalRule: string,
@@ -497,7 +498,8 @@ export function buildPhaseAPrompt(
   word: string,
   detailBank: string[],
   diversityHint: string = '',
-  vocabCooldownHint: string = ''
+  vocabCooldownHint: string = '',
+  styleHint: string = ''
 ): string {
   const styleGuide = getPhaseStyleGuide(style, 'A');
   const details = detailBank.length > 0
@@ -507,7 +509,7 @@ export function buildPhaseAPrompt(
   return `${PHASE_A_TEMPLATE.replace('{normal_rule}', normalRule)}
 ${details}
 ${styleGuide}
-${diversityHint}${vocabCooldownHint}
+${diversityHint}${vocabCooldownHint}${styleHint}
 
 キーワード反映ルール（必須）：
 - キーワード「${word}」を本文中に必ず1回以上含めること

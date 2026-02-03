@@ -318,6 +318,11 @@ function hasAnomalyVocabNearKeyword(
   keyword: string,
   windowSize: number = 30
 ): boolean {
+  // 空のキーワードの場合はスキップ（無限ループ防止）
+  if (!keyword || keyword.trim() === '') {
+    return true; // おまかせモードでは常にOK
+  }
+
   const lowerText = text.toLowerCase();
   const lowerKeyword = keyword.toLowerCase();
 
@@ -744,11 +749,12 @@ const INCOMPATIBLE_ACTION_PAIRS: Array<[RegExp, RegExp, string]> = [
  * 唐突な逃走・放棄を検出するパターン
  */
 const ABRUPT_ESCAPE_PATTERNS = [
-  // 逃走・放棄の動作
-  /(?:車[をは])?(?:捨て|置い|放置し|乗り捨て)/,
+  // 逃走・放棄の動作（より厳密なパターン）
+  /車[をは](?:捨て|置い|放置し|乗り捨て)て(?:逃|走|去|帰)/,
+  /(?:その場に|そこに)置い(?:て|たまま)(?:逃|走|去|帰)/,
   /(?:家[をは])?(?:飛び出|逃げ出)/,
   /(?:仕事[をは])?(?:放り出|投げ出)/,
-  /(?:そのまま|即座に|すぐに)(?:逃|走|帰|戻)/,
+  /(?:そのまま|即座に|すぐに)(?:逃げ|走り去|帰っ|戻っ)/,
 ];
 
 /**

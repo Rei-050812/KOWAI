@@ -214,11 +214,17 @@ async function selectBlueprintWithFallback(
 // =============================================
 
 async function callLLM(prompt: string, maxTokens: number = 1000): Promise<string> {
+  const startTime = Date.now();
+  console.log(`[LLM] Starting API call (maxTokens=${maxTokens}, promptLength=${prompt.length})...`);
+
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }],
-  });
+  }, { timeout: 60000 }); // 60秒タイムアウト
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[LLM] API call completed in ${elapsed}ms (usage: input=${message.usage.input_tokens}, output=${message.usage.output_tokens})`);
 
   const content = message.content[0];
   if (content.type !== "text") {
@@ -320,7 +326,7 @@ async function executeThreePhaseGeneration(
   const bp = blueprint.blueprint;
   const endingMode = bp.ending_mode || "open";
 
-  // StyleBlueprint のスタイルヒントを構築（Phase B/C で使用）
+  // StyleBlueprint のスタイルヒントを構築（全フェーズで使用）
   const styleHint = styleBlueprint ? buildStyleHint(styleBlueprint.style_data) : '';
   if (styleBlueprint) {
     console.log(`[StyleBlueprint] Using: "${styleBlueprint.archetype_name}" (id=${styleBlueprint.id})`);
@@ -399,7 +405,7 @@ async function executeThreePhaseGeneration(
   phaseAGenerationLoop:
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_A_VALIDATION_RETRY; validationAttempt++) {
     for (let diversityAttempt = 0; diversityAttempt <= 1; diversityAttempt++) {
-      phaseAPrompt = buildPhaseAPrompt(bp.normal_rule, style, word, bp.detail_bank, diversityAttempt > 0 ? diversityHint : '', vocabCooldownHint);
+      phaseAPrompt = buildPhaseAPrompt(bp.normal_rule, style, word, bp.detail_bank, diversityAttempt > 0 ? diversityHint : '', vocabCooldownHint, styleHint);
       console.log(`[Phase A] generating opening... (validation attempt ${validationAttempt + 1}, diversity attempt ${diversityAttempt + 1})`);
       const phaseAResult = await generatePhaseAWithRetry(phaseAPrompt, word);
       stats.retryCountPhaseA = phaseAResult.retryCount;
@@ -448,7 +454,6 @@ async function executeThreePhaseGeneration(
   }
 
   // Phase B: disturbance（続き書き専用 + 導入文被り/出来事再描写/行動整合性チェック）
-  // styleHint を Phase B に注入（Phase A には適用しない）
   const phaseBPrompt = buildPhaseBPrompt(bp.anomaly, style, phaseAText, word, vocabCooldownHint + styleHint);
   let phaseBText = '';
   const MAX_PHASE_B_VALIDATION_RETRY = 1; // 高速化のため削減
@@ -573,8 +578,10 @@ async function executeThreePhaseGeneration(
   }
 
   // キーワード主役化チェック（Phase B + C を結合して検証）
+  console.log(`[Post-PhaseC] Starting keyword focus check...`);
   const combinedBC = `${phaseBText}\n\n${phaseCText}`;
   const keywordFocusResult = validateKeywordFocus(combinedBC, word, 2);
+  console.log(`[Post-PhaseC] Keyword focus check completed`);
   stats.keywordFocusOk = keywordFocusResult.isValid;
   stats.keywordFocusCount = keywordFocusResult.keywordCount;
 
@@ -591,11 +598,13 @@ async function executeThreePhaseGeneration(
   // 対策3: 結合前に冒頭重複ガードを入れる（保険）
   // - phaseA と phaseB の先頭1文が実質同一なら phaseB の冒頭文を削除
   // - 同様に phaseB / phaseC もチェック
+  console.log(`[Post-PhaseC] Starting dedupe...`);
   const { a: dedupeA, b: dedupeB, c: dedupeC, log: dedupeLog } = deduplicatePhases(
     phaseAText,
     phaseBText,
     phaseCText
   );
+  console.log(`[Post-PhaseC] Dedupe completed`);
 
   // 重複除去ログを記録
   stats.dedupeApplied = dedupeLog.dedupeApplied;
@@ -637,6 +646,7 @@ async function generateTitleAndHook(
   story: string,
   word: string
 ): Promise<{ title: string; hook: string }> {
+  console.log("[TitleHook] Starting title and hook generation...");
   const prompt = `以下の怪談にタイトルと冒頭（hook）をつけてください。
 
 怪談本文:
@@ -680,6 +690,8 @@ async function saveStoryWithLogs(
   stats: ValidationStats,
   storyMeta: StoryMeta
 ): Promise<Story> {
+  console.log("[DB] Starting story save...");
+  const startTime = Date.now();
   const { blueprint, fallbackUsed, fallbackReason } = selection;
   const blueprintIdForDb = isGenericBlueprint(blueprint.id) ? null : blueprint.id;
 
@@ -692,6 +704,8 @@ async function saveStoryWithLogs(
     blueprintIdForDb,
     storyMeta // 多様性ガード用にメタ情報を保存
   );
+
+  console.log(`[DB] createStory completed in ${Date.now() - startTime}ms`);
 
   await Promise.allSettled([
     incrementWordCount(word),
@@ -738,6 +752,7 @@ async function saveStoryWithLogs(
     }),
   ]);
 
+  console.log(`[DB] All saves completed in ${Date.now() - startTime}ms`);
   return story;
 }
 

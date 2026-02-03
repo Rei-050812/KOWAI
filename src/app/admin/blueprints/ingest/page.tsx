@@ -47,6 +47,7 @@ export default function AdminIngestPage() {
 
   // 登録用フォーム（文体）
   const [registerStyleName, setRegisterStyleName] = useState("");
+  const [shouldRegisterStyle, setShouldRegisterStyle] = useState(true);
 
   // 既存の流派名一覧（重複チェック用）
   const [existingStyleNames, setExistingStyleNames] = useState<string[]>([]);
@@ -87,6 +88,7 @@ export default function AdminIngestPage() {
     setRegisterTitle("");
     setRegisterTags("");
     setRegisterStyleName("");
+    setShouldRegisterStyle(true);
   }, []);
 
   const handleExtract = async () => {
@@ -169,8 +171,8 @@ export default function AdminIngestPage() {
 
       let styleMsg = "";
 
-      // 文体Blueprintも保存
-      if (styleData && registerStyleName.trim()) {
+      // 文体Blueprintも保存（チェックボックスがオンの場合のみ）
+      if (styleData && shouldRegisterStyle && registerStyleName.trim()) {
         // 編集された流派名を使用
         const finalStyleData = {
           ...styleData,
@@ -463,27 +465,40 @@ export default function AdminIngestPage() {
               {/* 文体用 */}
               {styleData && (
                 <div className="space-y-3 pt-3 border-t border-gray-700">
-                  <h4 className="text-sm font-medium text-blue-400">文体（StyleBlueprint）</h4>
-                  <div>
-                    <label className="block text-sm text-gray-300 mb-1">流派名 *</label>
-                    <input
-                      type="text"
-                      value={registerStyleName}
-                      onChange={(e) => setRegisterStyleName(e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:outline-none focus:border-blue-500"
-                      placeholder="例: 実録調"
-                    />
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-blue-400">文体（StyleBlueprint）</h4>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={shouldRegisterStyle}
+                        onChange={(e) => setShouldRegisterStyle(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-800"
+                      />
+                      <span className="text-sm text-gray-300">文体も登録する</span>
+                    </label>
                   </div>
+                  {shouldRegisterStyle && (
+                    <div>
+                      <label className="block text-sm text-gray-300 mb-1">流派名 *</label>
+                      <input
+                        type="text"
+                        value={registerStyleName}
+                        onChange={(e) => setRegisterStyleName(e.target.value)}
+                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:outline-none focus:border-blue-500"
+                        placeholder="例: 実録調"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
               <div className="flex gap-4 pt-2">
                 <button
                   onClick={handleRegister}
-                  disabled={status.type === "saving" || !registerTitle.trim() || (styleData && !registerStyleName.trim()) || !token}
+                  disabled={status.type === "saving" || !registerTitle.trim() || (styleData && shouldRegisterStyle && !registerStyleName.trim()) || !token}
                   className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-lg font-medium"
                 >
-                  {status.type === "saving" ? "保存中..." : `登録${styleData ? "（構造 + 文体）" : "（構造のみ）"}`}
+                  {status.type === "saving" ? "保存中..." : `登録${styleData && shouldRegisterStyle ? "（構造 + 文体）" : "（構造のみ）"}`}
                 </button>
                 <button
                   onClick={() => router.push("/admin/blueprints")}
