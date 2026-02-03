@@ -1009,7 +1009,7 @@ export async function getActiveStyleBlueprintCount(): Promise<number> {
 }
 
 /**
- * 全ての StyleBlueprint を取得（管理用：無効も含む）
+ * 有効な StyleBlueprint を取得（管理用一覧）
  */
 export async function getAllStyleBlueprints(): Promise<StyleBlueprint[]> {
   const client = getSupabaseClient();
@@ -1017,6 +1017,7 @@ export async function getAllStyleBlueprints(): Promise<StyleBlueprint[]> {
   const { data, error } = await client
     .from("style_blueprints")
     .select("*")
+    .eq("is_active", true)
     .order("quality_score", { ascending: false });
 
   if (error) {
@@ -1058,7 +1059,7 @@ export async function updateStyleBlueprint(
 }
 
 /**
- * StyleBlueprint を削除
+ * StyleBlueprint を削除（論理削除：is_active = false に設定）
  */
 export async function deleteStyleBlueprint(
   id: number
@@ -1067,11 +1068,11 @@ export async function deleteStyleBlueprint(
 
   const { error } = await client
     .from("style_blueprints")
-    .delete()
+    .update({ is_active: false })
     .eq("id", id);
 
   if (error) {
-    console.error("Error deleting style blueprint:", error);
+    console.error("Error deactivating style blueprint:", error);
     return { success: false, error: error.message };
   }
 
