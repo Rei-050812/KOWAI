@@ -334,10 +334,17 @@ async function executeThreePhaseGeneration(
 
     // 低評価ストーリーの悪い例を取得してプロンプトに追加
     try {
-      const badExcerpts = await getLowRatedStoryExcerpts(styleBlueprint.id, 2, 2);
-      if (badExcerpts.length > 0) {
-        console.log(`[StyleBlueprint] Found ${badExcerpts.length} low-rated examples to avoid`);
-        styleHint += `\n\n【避けるべき表現例】以下は過去に低評価だった文章の抜粋（冒頭・中盤・終盤）です。同様の表現パターンは避けてください：\n${badExcerpts.map((ex, i) => `悪例${i + 1}: 「${ex}」`).join('\n')}`;
+      const badExamples = await getLowRatedStoryExcerpts(styleBlueprint.id, 2, 2);
+      if (badExamples.length > 0) {
+        console.log(`[StyleBlueprint] Found ${badExamples.length} low-rated examples to avoid`);
+        const exampleTexts = badExamples.map((ex, i) => {
+          let text = `悪例${i + 1}: 「${ex.excerpt}」`;
+          if (ex.note) {
+            text += `\n  → 問題点: ${ex.note}`;
+          }
+          return text;
+        }).join('\n');
+        styleHint += `\n\n【避けるべき表現例】以下は過去に低評価だった文章の抜粋（冒頭・中盤・終盤）です。同様の表現パターンは避けてください：\n${exampleTexts}`;
       }
     } catch (error) {
       console.warn("[StyleBlueprint] Failed to fetch low-rated excerpts:", error);

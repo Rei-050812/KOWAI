@@ -964,7 +964,15 @@ export async function recordStyleBlueprintUsage(styleId: number): Promise<void> 
 }
 
 /**
- * 低評価ストーリーの抜粋を取得（悪い例として使用）
+ * 低評価ストーリーの情報を取得（悪い例 + メモ）
+ */
+export interface LowRatedStoryInfo {
+  excerpt: string;  // 文章の抜粋（冒頭・中盤・終盤）
+  note: string | null;  // レビューメモ
+}
+
+/**
+ * 低評価ストーリーの抜粋とメモを取得（悪い例として使用）
  * @param styleId StyleBlueprintのID
  * @param maxRating この評価以下を「低評価」とみなす（デフォルト: 2）
  * @param limit 取得件数
@@ -973,7 +981,7 @@ export async function getLowRatedStoryExcerpts(
   styleId: number,
   maxRating: number = 2,
   limit: number = 2
-): Promise<string[]> {
+): Promise<LowRatedStoryInfo[]> {
   const client = getSupabaseClient();
 
   // Step 1: generation_logsからstyle_blueprint_idに紐づくstory_idを取得
@@ -991,10 +999,10 @@ export async function getLowRatedStoryExcerpts(
     return [];
   }
 
-  // Step 2: 低評価レビューがあるストーリーを取得
+  // Step 2: 低評価レビューがあるストーリーを取得（メモも含む）
   const { data: reviewData, error: reviewError } = await client
     .from("story_reviews")
-    .select("story_id")
+    .select("story_id, note")
     .in("story_id", storyIds)
     .lte("rating", maxRating)
     .order("created_at", { ascending: false })
@@ -1005,11 +1013,12 @@ export async function getLowRatedStoryExcerpts(
   }
 
   const lowRatedStoryIds = reviewData.map((r) => r.story_id);
+  const noteMap = new Map(reviewData.map((r) => [r.story_id, r.note]));
 
   // Step 3: ストーリー本文を取得
   const { data: storyData, error: storyError } = await client
     .from("stories")
-    .select("story")
+    .select("id, story")
     .in("id", lowRatedStoryIds);
 
   if (storyError || !storyData) {
@@ -1039,9 +1048,12 @@ export async function getLowRatedStoryExcerpts(
         excerpts.push(story.slice(-excerptLen));
       }
 
-      return excerpts.join(" ... ");
+      return {
+        excerpt: excerpts.join(" ... "),
+        note: noteMap.get(row.id) || null,
+      };
     })
-    .filter((excerpt): excerpt is string => excerpt !== null);
+    .filter((info): info is LowRatedStoryInfo => info !== null);
 }
 
 /**
