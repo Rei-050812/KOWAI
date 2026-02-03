@@ -13,7 +13,7 @@ import {
 
 let supabase: SupabaseClient | null = null;
 
-function getSupabaseClient(): SupabaseClient {
+export function getSupabaseClient(): SupabaseClient {
   if (supabase) return supabase;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

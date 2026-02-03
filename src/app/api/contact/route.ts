@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
     const { name, email, message } = await request.json();
+    const supabase = getSupabaseClient();
 
     // バリデーション
     if (!name || !email || !message) {

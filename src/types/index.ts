@@ -169,7 +169,7 @@ export interface GenerationConfig {
 }
 
 // フォールバック理由
-export type FallbackReason = 'hit' | 'near' | 'generic';
+export type FallbackReason = 'hit' | 'near' | 'generic' | 'random';
 
 // Blueprint選択結果（フォールバック情報含む）
 export interface BlueprintSelectionResult {
