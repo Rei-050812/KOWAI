@@ -21,6 +21,7 @@ import {
   getRecentStoryMetas,
   selectStyleBlueprint,
   recordStyleBlueprintUsage,
+  getLowRatedStoryExcerpts,
 } from "@/lib/supabase";
 import { getGenericBlueprint, isGenericBlueprint } from "@/lib/generic-blueprint";
 import {
@@ -327,9 +328,21 @@ async function executeThreePhaseGeneration(
   const endingMode = bp.ending_mode || "open";
 
   // StyleBlueprint のスタイルヒントを構築（全フェーズで使用）
-  const styleHint = styleBlueprint ? buildStyleHint(styleBlueprint.style_data) : '';
+  let styleHint = styleBlueprint ? buildStyleHint(styleBlueprint.style_data) : '';
   if (styleBlueprint) {
     console.log(`[StyleBlueprint] Using: "${styleBlueprint.archetype_name}" (id=${styleBlueprint.id})`);
+
+    // 低評価ストーリーの悪い例を取得してプロンプトに追加
+    try {
+      const badExcerpts = await getLowRatedStoryExcerpts(styleBlueprint.id, 2, 2);
+      if (badExcerpts.length > 0) {
+        console.log(`[StyleBlueprint] Found ${badExcerpts.length} low-rated examples to avoid`);
+        styleHint += `\n\n【避けるべき表現例】以下は過去に低評価だった文章の例です。このような書き方は避けてください：\n${badExcerpts.map((ex, i) => `例${i + 1}: 「${ex}」`).join('\n')}`;
+      }
+    } catch (error) {
+      console.warn("[StyleBlueprint] Failed to fetch low-rated excerpts:", error);
+      // 失敗しても生成は続行
+    }
   }
 
   const stats: ValidationStats = {

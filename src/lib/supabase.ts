@@ -964,6 +964,70 @@ export async function recordStyleBlueprintUsage(styleId: number): Promise<void> 
 }
 
 /**
+ * 低評価ストーリーの抜粋を取得（悪い例として使用）
+ * @param styleId StyleBlueprintのID
+ * @param maxRating この評価以下を「低評価」とみなす（デフォルト: 2）
+ * @param limit 取得件数
+ */
+export async function getLowRatedStoryExcerpts(
+  styleId: number,
+  maxRating: number = 2,
+  limit: number = 2
+): Promise<string[]> {
+  const client = getSupabaseClient();
+
+  // Step 1: generation_logsからstyle_blueprint_idに紐づくstory_idを取得
+  const { data: logData, error: logError } = await client
+    .from("generation_logs")
+    .select("story_id")
+    .eq("style_blueprint_id", styleId);
+
+  if (logError || !logData || logData.length === 0) {
+    return [];
+  }
+
+  const storyIds = logData.map((log) => log.story_id).filter(Boolean);
+  if (storyIds.length === 0) {
+    return [];
+  }
+
+  // Step 2: 低評価レビューがあるストーリーを取得
+  const { data: reviewData, error: reviewError } = await client
+    .from("story_reviews")
+    .select("story_id")
+    .in("story_id", storyIds)
+    .lte("rating", maxRating)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (reviewError || !reviewData || reviewData.length === 0) {
+    return [];
+  }
+
+  const lowRatedStoryIds = reviewData.map((r) => r.story_id);
+
+  // Step 3: ストーリー本文を取得
+  const { data: storyData, error: storyError } = await client
+    .from("stories")
+    .select("story")
+    .in("id", lowRatedStoryIds);
+
+  if (storyError || !storyData) {
+    return [];
+  }
+
+  // ストーリーから抜粋を取得（最初の200文字程度）
+  return storyData
+    .map((row) => {
+      const story = row.story;
+      if (!story) return null;
+      // 最初の200文字を抜粋
+      return story.slice(0, 200) + (story.length > 200 ? "..." : "");
+    })
+    .filter((excerpt): excerpt is string => excerpt !== null);
+}
+
+/**
  * StyleBlueprint を保存
  */
 export async function saveStyleBlueprint(
