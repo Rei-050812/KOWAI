@@ -25,7 +25,7 @@ export default function StoryGenerator({ onGenerate, isLoading }: StoryGenerator
       {/* 単語入力 */}
       <div className="space-y-4">
         <label htmlFor="word" className="block text-xl font-semibold text-horror-text tracking-wide">
-          恐怖の種となる単語を入力
+          単語を入力
         </label>
         <input
           type="text"
@@ -75,7 +75,7 @@ export default function StoryGenerator({ onGenerate, isLoading }: StoryGenerator
         {isLoading ? (
           <>
             <span className="inline-block w-5 h-5 border-2 border-horror-text border-t-transparent rounded-full animate-spin" />
-            <span className="tracking-wider">怪談を紡いでいます<span className="loading-dots" /></span>
+            <span className="tracking-wider">生成中<span className="loading-dots" /></span>
           </>
         ) : (
           <>

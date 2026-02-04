@@ -45,14 +45,11 @@ export default function Home() {
       {/* ヒーローセクション */}
       <section className="text-center mb-16 md:mb-20">
         <h2 className="text-5xl md:text-7xl font-bold text-horror-text mb-6 tracking-wide leading-tight" style={{textShadow: '0 0 30px rgba(232, 230, 227, 0.2)'}}>
-          <span className="text-horror-crimson">怪</span>談を
-          <span className="text-horror-crimson">紡</span>ぐ
+          <span className="text-horror-crimson">怪</span>談<span className="text-horror-crimson">生</span>成
         </h2>
         <div className="w-24 h-px bg-horror-crimson/60 mx-auto mb-8"></div>
         <p className="text-horror-text-secondary text-lg md:text-xl max-w-2xl mx-auto leading-loose tracking-wide">
-          たった一つの単語から、AIが本格的な怪談を生成します。
-          <br className="hidden md:block" />
-          あなたの恐怖の種を、物語へと変えましょう。
+          単語を1つ入力するだけで、AIが怪談を書きます。
         </p>
       </section>
 
