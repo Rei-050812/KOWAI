@@ -4,6 +4,7 @@ import { useState } from "react";
 import StoryGenerator from "@/components/StoryGenerator";
 import StoryDisplay from "@/components/StoryDisplay";
 import RankingPreview from "@/components/RankingPreview";
+import LatestStoriesPreview from "@/components/LatestStoriesPreview";
 import { Story, StoryStyle } from "@/types";
 
 export default function Home() {
@@ -82,6 +83,25 @@ export default function Home() {
         </section>
       )}
 
+      {/* 新着怪談セクション */}
+      <section className="max-w-6xl mx-auto pt-8 mb-20">
+        <h3 className="text-3xl font-bold text-horror-text mb-10 text-center tracking-wide">
+          <span className="text-horror-crimson">新着</span>怪談
+        </h3>
+        <div className="w-16 h-px bg-horror-crimson/50 mx-auto mb-12"></div>
+        <LatestStoriesPreview />
+
+        <div className="text-center mt-10">
+          <a
+            href="/stories"
+            className="inline-block text-horror-text border border-horror-crimson/60 hover:border-horror-crimson hover:bg-horror-crimson/10 px-8 py-4 rounded-md transition-all duration-400 tracking-wider"
+            style={{boxShadow: '0 0 20px rgba(165, 42, 42, 0.2)'}}
+          >
+            全怪談一覧を見る →
+          </a>
+        </div>
+      </section>
+
       {/* ランキングセクション */}
       <section className="max-w-6xl mx-auto pt-8">
         <h3 className="text-3xl font-bold text-horror-text mb-10 text-center tracking-wide">
@@ -90,13 +110,13 @@ export default function Home() {
         <div className="w-16 h-px bg-horror-crimson/50 mx-auto mb-12"></div>
         <RankingPreview />
 
-        <div className="text-center mt-12">
+        <div className="text-center mt-10">
           <a
             href="/ranking"
             className="inline-block text-horror-text border border-horror-crimson/60 hover:border-horror-crimson hover:bg-horror-crimson/10 px-8 py-4 rounded-md transition-all duration-400 tracking-wider"
             style={{boxShadow: '0 0 20px rgba(165, 42, 42, 0.2)'}}
           >
-            すべてのランキングを見る →
+            ランキングを見る →
           </a>
         </div>
       </section>

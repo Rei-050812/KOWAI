@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getStoryById, incrementViews } from "@/lib/supabase";
+import { getVisibleStoryById, incrementViews } from "@/lib/supabase";
 import StoryDetailClient from "./StoryDetailClient";
 import { ArticleStructuredData } from "@/components/StructuredData";
 
@@ -14,7 +14,7 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   try {
     const { id } = await params;
-    const story = await getStoryById(id);
+    const story = await getVisibleStoryById(id);
 
     if (!story) {
       return {
@@ -57,7 +57,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function StoryPage({ params }: PageProps) {
   const { id } = await params;
-  const story = await getStoryById(id);
+  const story = await getVisibleStoryById(id);
 
   if (!story) {
     notFound();

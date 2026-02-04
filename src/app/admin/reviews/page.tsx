@@ -24,6 +24,7 @@ type ReviewItem = {
   coherence_issue?: boolean;
   retry_total?: number;
   fallback_reason?: string;
+  is_visible?: boolean;
 };
 
 const ISSUE_OPTIONS = [
@@ -166,6 +167,41 @@ export default function AdminReviewsPage() {
     setCurrentIndex((prev) => Math.max(prev - 1, 0));
     resetForm();
   }, [dirty, resetForm]);
+
+  const handleToggleVisibility = useCallback(async (isVisible: boolean) => {
+    if (!currentItem) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/stories/visibility`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          storyId: currentItem.story_id,
+          isVisible,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "表示設定の更新に失敗しました");
+      }
+      // 現在のアイテムの表示状態を更新
+      setItems((prev) =>
+        prev.map((item, idx) =>
+          idx === currentIndex ? { ...item, is_visible: isVisible } : item
+        )
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "表示設定の更新に失敗しました"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [currentItem, token, currentIndex]);
 
   const toggleIssue = useCallback((value: string) => {
     setIssues((prev) => {
@@ -343,7 +379,7 @@ export default function AdminReviewsPage() {
               className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
             />
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={handleSaveCurrent}
@@ -368,6 +404,26 @@ export default function AdminReviewsPage() {
               >
                 次へ
               </button>
+              <div className="border-l border-gray-700 mx-2" />
+              {currentItem.is_visible !== false ? (
+                <button
+                  type="button"
+                  onClick={() => handleToggleVisibility(false)}
+                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm"
+                  disabled={loading}
+                >
+                  非表示にする
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleToggleVisibility(true)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                  disabled={loading}
+                >
+                  再表示する
+                </button>
+              )}
             </div>
           </div>
         )}

@@ -161,6 +161,7 @@ export async function getLatestStories(limit: number = 10): Promise<Story[]> {
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -178,6 +179,7 @@ export async function getPopularStories(limit: number = 10): Promise<Story[]> {
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .order("likes", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -245,6 +247,7 @@ export async function getHallOfFameStories(limit: number = 50): Promise<StoryWit
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .lt("created_at", sevenDaysAgo.toISOString())
     .gte("views", 100)
     .order("score", { ascending: false })
@@ -267,6 +270,7 @@ export async function getWeeklyRankingStories(limit: number = 20): Promise<Story
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .gte("created_at", sevenDaysAgo.toISOString())
     .order("score", { ascending: false })
     .limit(limit);
@@ -288,6 +292,7 @@ export async function getMonthlyRankingStories(limit: number = 30): Promise<Stor
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .gte("created_at", thirtyDaysAgo.toISOString())
     .order("score", { ascending: false })
     .limit(limit);
@@ -307,6 +312,7 @@ export async function getHiddenGems(limit: number = 20): Promise<StoryWithScore[
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .gte("views", 10)
     .lte("views", 100)
     .gte("likes", 3)
@@ -390,6 +396,7 @@ export async function getStoriesByStyle(style: StoryStyle, limit: number = 20): 
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .eq("style", style)
     .order("score", { ascending: false })
     .limit(limit);
@@ -457,7 +464,8 @@ export async function getRandomStories(limit: number = 5): Promise<StoryWithScor
   // 縺ｾ縺夂ｷ乗焚繧貞叙蠕・
   const { count, error: countError } = await client
     .from("stories")
-    .select("*", { count: "exact", head: true });
+    .select("*", { count: "exact", head: true })
+    .eq("is_visible", true);
 
   if (countError || !count) {
     console.error("Error counting stories:", countError);
@@ -470,6 +478,7 @@ export async function getRandomStories(limit: number = 5): Promise<StoryWithScor
   const { data, error } = await client
     .from("stories")
     .select("*")
+    .eq("is_visible", true)
     .range(randomOffset, randomOffset + limit - 1);
 
   if (error) {
@@ -848,6 +857,7 @@ export interface AdminReviewQueueItem {
   coherence_issue?: boolean;
   retry_total?: number;
   fallback_reason?: string;
+  is_visible?: boolean;
 }
 
 export type AdminQueueType = "priority" | "all" | "random";
@@ -892,12 +902,15 @@ export async function saveStoryReview(input: {
   note: string | null;
 }): Promise<void> {
   const client = getSupabaseClient();
-  const { error } = await client.from("story_reviews").insert({
-    story_id: input.storyId,
-    rating: input.rating,
-    issues: input.issues,
-    note: input.note,
-  });
+  const { error } = await client.from("story_reviews").upsert(
+    {
+      story_id: input.storyId,
+      rating: input.rating,
+      issues: input.issues,
+      note: input.note,
+    },
+    { onConflict: "story_id" }
+  );
 
   if (error) {
     console.error("Error saving story review:", error);
@@ -1171,4 +1184,53 @@ export async function deleteStyleBlueprint(
   }
 
   return { success: true };
+}
+
+// =============================================
+// ストーリー表示/非表示管理
+// =============================================
+
+/**
+ * ストーリーの表示/非表示を切り替える
+ */
+export async function setStoryVisibility(
+  storyId: string,
+  isVisible: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+
+  const { error } = await client
+    .from("stories")
+    .update({ is_visible: isVisible })
+    .eq("id", storyId);
+
+  if (error) {
+    console.error("Error updating story visibility:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * 公開ページ用：表示可能なストーリーのみ取得
+ */
+export async function getVisibleStoryById(id: string): Promise<Story | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from("stories")
+    .select("*")
+    .eq("id", id)
+    .eq("is_visible", true)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+    console.error("Error fetching visible story:", error);
+    return null;
+  }
+
+  return data as Story;
 }
