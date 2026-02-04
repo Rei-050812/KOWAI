@@ -82,6 +82,12 @@ KOWAIは、Claude AIを活用した次世代の怪談生成プラットフォー
   - 最新の怪談
   - 人気の怪談（いいね数順）
   - 人気の単語
+  - 全怪談一覧ページ（`/stories`）
+
+- 🔒 **コンテンツ品質管理**
+  - 低評価（1-2）ストーリーの自動非表示
+  - 管理画面からの手動非表示/再表示
+  - StyleBlueprintの品質スコア自動計算（平均評価×20）
 
 ## 🛠 技術スタック
 
@@ -330,7 +336,7 @@ KOWAI/
 │   │   │   │   ├── style-blueprints/ # StyleBlueprint CRUD
 │   │   │   │   └── dashboard/     # 統計ダッシュボードAPI
 │   │   │   ├── ranking/      # ランキングAPI
-│   │   │   └── stories/      # ストーリーAPI
+│   │   │   └── stories/      # ストーリーAPI（一覧取得・いいね・シェア）
 │   │   ├── admin/            # 管理画面
 │   │   │   ├── AdminAuthContext.tsx  # 認証状態の共有Context
 │   │   │   ├── blueprints/  # Blueprint統合管理（構造/文体/新規登録タブ）
@@ -338,14 +344,16 @@ KOWAI/
 │   │   │   ├── dashboard/   # 統計ダッシュボード
 │   │   │   └── reviews/     # レビュー管理
 │   │   ├── story/[id]/       # 怪談詳細ページ
+│   │   ├── stories/          # 全怪談一覧ページ
 │   │   ├── ranking/          # ランキングページ
 │   │   ├── layout.tsx        # ルートレイアウト
 │   │   ├── page.tsx          # トップページ
 │   │   └── globals.css       # グローバルスタイル
 │   ├── components/            # Reactコンポーネント
-│   │   ├── StoryGenerator.tsx  # 怪談生成フォーム
-│   │   ├── StoryDisplay.tsx    # 怪談表示
-│   │   └── RankingPreview.tsx  # ランキングプレビュー
+│   │   ├── StoryGenerator.tsx      # 怪談生成フォーム
+│   │   ├── StoryDisplay.tsx        # 怪談表示
+│   │   ├── RankingPreview.tsx      # ランキングプレビュー
+│   │   └── LatestStoriesPreview.tsx # 新着怪談プレビュー
 │   ├── lib/                   # ユーティリティ
 │   │   ├── prompts.ts          # AIプロンプト定義（3フェーズ対応・StyleBlueprint注入）
 │   │   ├── supabase.ts         # Supabaseクライアント（Blueprint/StyleBlueprint対応）
@@ -371,7 +379,11 @@ KOWAI/
 │       ├── 008_admin_views.sql                  # 管理用ビュー
 │       ├── 009_review_functions.sql             # レビュー用RPC
 │       ├── 010_style_blueprints.sql             # StyleBlueprintテーブル+初期データ
-│       └── 011_unify_admin_queue_columns.sql    # 管理ビュー統一
+│       ├── 011_unify_admin_queue_columns.sql    # 管理ビュー統一
+│       ├── 012_review_rating_trigger.sql        # レビュー評価トリガー
+│       ├── 013_style_issue_penalty.sql          # スタイル問題ペナルティ
+│       ├── 014_story_visibility.sql             # ストーリー表示/非表示機能
+│       └── 015_auto_quality_score.sql           # 品質スコア自動計算
 ├── public/                    # 静的ファイル
 ├── .env.local.example        # 環境変数のサンプル
 ├── next.config.ts            # Next.js設定
@@ -475,6 +487,8 @@ Blueprintは怪談の「構造的な怖さの設計図」です。入力され�
 - 5段階評価 + 問題タグ付け
 - 優先度自動計算（品質フラグ数に応じて）
 - **レビュー評価がStyleBlueprint選択に自動反映**（フィードバックループ）
+- **非表示/再表示ボタン**でストーリーの公開状態を管理
+- 評価1-2を付けると自動で非表示になる
 
 ### StyleBlueprint
 
