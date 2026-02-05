@@ -36,9 +36,9 @@ export const STYLE_LABELS: Record<StoryStyle, string> = {
 };
 
 export const STYLE_DESCRIPTIONS: Record<StoryStyle, string> = {
-  short: '約500字。サクッと読める、オチ重視で最後の一文で急転する怪談',
-  medium: '約1000字。じっくり読ませる、雰囲気と恐怖が徐々に積み重なる怪談',
-  long: '約2000字。読み応えのある本格怪談、伏線や複数の展開を含む',
+  short: '約800字。サクッと読める、オチ重視で最後の一文で急転する怪談',
+  medium: '約1500字。じっくり読ませる、雰囲気と恐怖が徐々に積み重なる怪談',
+  long: '約3000字。読み応えのある本格怪談、伏線や複数の展開を含む',
 };
 
 // ランキング機能用の型定義
