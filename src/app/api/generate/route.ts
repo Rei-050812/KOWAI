@@ -56,6 +56,13 @@ const GENERATION_CONFIG: GenerationConfig = {
   model: MODEL,
 };
 
+// スタイル別のmaxTokens設定（日本語1文字≒1.5-2トークン）
+const STYLE_MAX_TOKENS: Record<StoryStyle, { phaseA: number; phaseB: number; phaseC: number }> = {
+  short: { phaseA: 200, phaseB: 800, phaseC: 700 },
+  medium: { phaseA: 200, phaseB: 1500, phaseC: 1400 },
+  long: { phaseA: 200, phaseB: 3000, phaseC: 2800 },
+};
+
 // =============================================
 // 初期化
 // =============================================
@@ -244,13 +251,14 @@ async function callLLM(prompt: string, maxTokens: number = 1000): Promise<string
  */
 async function generatePhaseAWithRetry(
   prompt: string,
-  keyword: string
+  keyword: string,
+  maxTokens: number = 200
 ): Promise<{ text: string; retryCount: number; keywordMiss: boolean }> {
   let retryCount = 0;
   let keywordMiss = false;
 
   for (let i = 0; i <= MAX_RETRY; i++) {
-    const text = await callLLM(prompt);
+    const text = await callLLM(prompt, maxTokens);
 
     // バリデーション
     const validation = validatePhaseText(text);
@@ -285,13 +293,14 @@ async function generatePhaseAWithRetry(
  */
 async function generatePhaseWithRetry(
   prompt: string,
-  phaseName: string
+  phaseName: string,
+  maxTokens: number = 1000
 ): Promise<{ text: string; retryCount: number; incompleteQuoteDetected: boolean }> {
   let retryCount = 0;
   let incompleteQuoteDetected = false;
 
   for (let i = 0; i <= MAX_RETRY; i++) {
-    const text = await callLLM(prompt);
+    const text = await callLLM(prompt, maxTokens);
 
     const validation = validatePhaseText(text);
 
@@ -427,7 +436,7 @@ async function executeThreePhaseGeneration(
     for (let diversityAttempt = 0; diversityAttempt <= 1; diversityAttempt++) {
       phaseAPrompt = buildPhaseAPrompt(bp.normal_rule, style, word, bp.detail_bank, diversityAttempt > 0 ? diversityHint : '', vocabCooldownHint, styleHint);
       console.log(`[Phase A] generating opening... (validation attempt ${validationAttempt + 1}, diversity attempt ${diversityAttempt + 1})`);
-      const phaseAResult = await generatePhaseAWithRetry(phaseAPrompt, word);
+      const phaseAResult = await generatePhaseAWithRetry(phaseAPrompt, word, STYLE_MAX_TOKENS[style].phaseA);
       stats.retryCountPhaseA = phaseAResult.retryCount;
       stats.keywordMissDetected = phaseAResult.keywordMiss;
       // 対策1: 常に上書き（phaseAText = newText）
@@ -480,7 +489,7 @@ async function executeThreePhaseGeneration(
 
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_B_VALIDATION_RETRY; validationAttempt++) {
     console.log(`[Phase B] generating disturbance... (validation attempt ${validationAttempt + 1})`);
-    const phaseBResult = await generatePhaseWithRetry(phaseBPrompt, "Phase B");
+    const phaseBResult = await generatePhaseWithRetry(phaseBPrompt, "Phase B", STYLE_MAX_TOKENS[style].phaseB);
     stats.retryCountPhaseB += phaseBResult.retryCount;
     if (phaseBResult.incompleteQuoteDetected) {
       stats.incompleteQuoteDetected = true;
@@ -555,7 +564,7 @@ async function executeThreePhaseGeneration(
   for (let validationAttempt = 0; validationAttempt <= MAX_PHASE_C_VALIDATION_RETRY; validationAttempt++) {
     phaseCPrompt = buildPhaseCPrompt(bp.irreversible_point, style, combinedAB, endingMode, word, vocabCooldownHint + styleHint);
     console.log(`[Phase C] generating irreversible_point+climax (mode=${endingMode}, validation attempt ${validationAttempt + 1})...`);
-    const phaseCResult = await generatePhaseWithRetry(phaseCPrompt, "Phase C");
+    const phaseCResult = await generatePhaseWithRetry(phaseCPrompt, "Phase C", STYLE_MAX_TOKENS[style].phaseC);
     stats.retryCountPhaseC += phaseCResult.retryCount;
     if (phaseCResult.incompleteQuoteDetected) {
       stats.incompleteQuoteDetected = true;
